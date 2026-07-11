@@ -18,14 +18,8 @@ class Settings(BaseSettings):
 
     @property
     def crime_data_url(self) -> str:
-        return (
-            f"https://{self.chicago_data_domain}/resource/"
-            f"{self.chicago_crime_dataset_id}.json"
-        )
+        return f"https://{self.chicago_data_domain}/resource/{self.chicago_crime_dataset_id}.json"
 
     @property
     def crime_metadata_url(self) -> str:
-        return (
-            f"https://{self.chicago_data_domain}/api/views/"
-            f"{self.chicago_crime_dataset_id}"
-        )
+        return f"https://{self.chicago_data_domain}/api/views/{self.chicago_crime_dataset_id}"
