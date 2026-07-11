@@ -15,7 +15,16 @@ prioritized epic breakdown.
 - [x] Chicago Crime API data endpoint verified
 - [x] Schema validation separated from record-level validation
 - [x] Missing coordinates handled as warnings, not blocking failures
-- [x] 14 tests passing
+- [x] **Historical crime ingestion from 2006 to present** — paged, retried, restartable
+      (`scripts/download_crime_history.py`)
+- [x] **Raw Parquet storage in the Bronze layer** — one file per calendar year, plus
+      `manifest.parquet` and `refresh_log.parquet`
+- [x] Retry defect fixed — timeouts were being wrapped before tenacity could see them, so
+      retries had never actually fired
+- [x] **Reusable ingestion framework** — `BaseDownloader` / `BaseBronzeWriter`, with
+      `CrimeDownloader` as the first implementation
+- [x] **Dataset catalog** — `data/reference/dataset_catalog.parquet`
+- [x] 42 tests passing
 - [x] Ruff passing
 - [x] mypy passing
 
@@ -23,9 +32,8 @@ prioritized epic breakdown.
 
 Ordered roughly by dependency. Nothing below has been started.
 
-- [ ] Historical crime ingestion from 2006 to present (restartable, paged)
 - [ ] Incremental refresh using `updated_on` and `id`
-- [ ] Raw Parquet storage in the Bronze layer
+- [ ] Daily automated refresh
 - [ ] Bronzeville boundary definition (custom GeoJSON, requires approval)
 - [ ] Woodlawn boundary ingestion (official community-area polygon)
 - [ ] Point-in-polygon neighborhood assignment

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     chicago_data_domain: str = "data.cityofchicago.org"
     chicago_crime_dataset_id: str = "ijzp-q8t2"
     data_dir: Path = Path("data")
+    log_dir: Path = Path("logs")
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(

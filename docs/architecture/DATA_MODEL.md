@@ -44,6 +44,26 @@ show what happened and when.
 
 ---
 
+## dataset_catalog
+
+**Purpose.** One row per ingested dataset: what it is, where its raw records live, what
+schema was last seen, and whether it is currently trustworthy. Lets anything downstream ask
+"can I rely on this dataset?" without opening a data file.
+
+**Primary key.** `dataset_id`.
+
+**Major fields.** `dataset_id`, `dataset_name`, `source`, `primary_key`, `date_column`,
+`refresh_frequency`, `bronze_location`, `schema_version`, `last_verified`, `status`.
+
+**Notes.** `schema_version` is a fingerprint of the source's column set — when it changes,
+the source was restructured. `status` is `active` (schema validated on the last attempt) or
+`blocked` (a required column has gone missing; do not trust this dataset).
+
+**Status.** `Built` — `data/reference/dataset_catalog.parquet`. Crime is the only registered
+dataset.
+
+---
+
 ## geography_dimension
 
 **Purpose.** The raw spatial reference layer: official polygons as published (community

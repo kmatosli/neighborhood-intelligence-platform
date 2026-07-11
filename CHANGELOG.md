@@ -8,6 +8,14 @@ released; everything to date is pre-release groundwork.
 
 ### Added
 
+- Historical crime ingestion (`scripts/download_crime_history.py`): paged, retried,
+  restartable, writing year-partitioned raw Parquet to `data/bronze/crime/` with
+  `manifest.parquet` and `refresh_log.parquet`.
+- Reusable ingestion framework: `BaseDownloader` and `BaseBronzeWriter`, with
+  `CrimeDownloader` as the first and only implementation.
+- Dataset catalog at `data/reference/dataset_catalog.parquet` — one row per ingested
+  dataset, with a `schema_version` fingerprint and an `active`/`blocked` trust status.
+- Ingestion logging to `logs/download.log`, `logs/api.log`, and `logs/validation.log`.
 - Project documentation structure: architecture, ADRs, product, methodology, and decision
   records under [docs/](docs/README.md).
 - Package installation via a `hatchling` build backend so `bw_observatory` is installed
@@ -16,6 +24,13 @@ released; everything to date is pre-release groundwork.
   and non-blocking coordinate checks (`missing_coordinates`).
 - Tests covering metadata column loss, absent coordinates, null coordinates, and missing
   core fields.
+
+### Fixed
+
+- Chicago client retries never fired. `httpx.TimeoutException` and `TransportError` are
+  subclasses of `httpx.HTTPError`, which was caught *inside* the `@retry`-decorated call and
+  re-raised as `ChicagoDataError` — so tenacity never saw a retryable exception. The retry
+  now sits on the raw request, with error wrapping outside it.
 
 ### Changed
 

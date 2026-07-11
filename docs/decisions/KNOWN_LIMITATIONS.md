@@ -15,10 +15,11 @@ There are no boundaries. Bronzeville has no approved definition, Woodlawn's poly
 ingested, and no record has ever been assigned to a neighborhood. Every neighborhood-level
 question is currently unanswerable.
 
-## It has no history
+## Its history is raw and unanalyzed
 
-Only a 10-record live sample has ever been fetched. There is no 2006-to-present backfill, so
-no trend of any kind can be computed.
+Historical crime can now be ingested year by year into Bronze, but Bronze is raw storage —
+nothing is typed, deduplicated across refreshes, grouped, or aggregated. No trend has been
+computed, and none should be quoted from these files.
 
 ## It does not track corrections
 

@@ -45,12 +45,49 @@ Each stage is described step by step in [DATA_FLOW.md](DATA_FLOW.md).
 | Settings | `src/bw_observatory/config.py` | Pydantic settings, `.env`-backed; dataset ID, domain, optional API token |
 | Chicago client | `src/bw_observatory/clients/chicago_data.py` | `get_metadata()`, `get_crimes()`; retries on timeout/transport errors via tenacity; raises `ChicagoDataError` |
 | Crime validation | `src/bw_observatory/validation/crime_schema.py` | Metadata column contract; blocking core fields; warning-level coordinates |
+| **Ingestion framework** | `src/bw_observatory/ingest/base.py` | `BaseDownloader` and `BaseBronzeWriter`. Owns everything shared: schema gate, paging, resume, row-count reconciliation, manifest, refresh log, catalog registration |
+| **Bronze writer** | `src/bw_observatory/ingest/bronze.py` | `ParquetBronzeWriter` — one Parquet file per partition; partition column configurable (`year` for crime) |
+| **Dataset catalog** | `src/bw_observatory/ingest/catalog.py` | `data/reference/dataset_catalog.parquet` — one row per ingested dataset |
+| **Crime downloader** | `src/bw_observatory/ingest/crime_history.py` | `CrimeDownloader`, the first implementation. Supplies only the year window, record contract, and schema rules |
+| Logging | `src/bw_observatory/logging_config.py` | `logs/download.log`, `logs/api.log`, `logs/validation.log` |
+| Historical ingestion | `scripts/download_crime_history.py` | `--year`, `--start-year`, `--end-year`, `--resume`, `--force` |
 | API check | `scripts/check_crime_api.py` | Validates metadata, pulls 10 live records, blocks on core fields, warns on coordinates |
 | Sample pull | `scripts/pull_crime_sample.py` | Writes a JSON sample to `data/bronze/` (JSON, not Parquet — interim) |
 | CI | `.github/workflows/ci.yml` | Ruff, Ruff format, mypy, pytest |
 
-Directory scaffolding exists but is empty: `data/bronze/`, `data/silver/`, `data/gold/`,
-`data/reference/`, and `config/neighborhoods/`.
+`data/bronze/crime/` now holds year-partitioned raw crime data plus `manifest.parquet` and
+`refresh_log.parquet`; `data/reference/` holds `dataset_catalog.parquet`. Still empty:
+`data/silver/`, `data/gold/`, and `config/neighborhoods/`.
+
+## The ingestion framework
+
+A second dataset should not mean a second copy of the ingestion logic. Two abstractions
+separate what every source shares from what is genuinely source-specific.
+
+**`BaseDownloader`** owns the orchestration: validate the schema *before* fetching anything,
+page a partition with a stable sort key, validate every record, reconcile the row count
+against the download count before marking a partition complete, write the manifest and
+refresh log, and register the dataset in the catalog. A subclass supplies only
+`fetch_metadata`, `fetch_page`, `validate_schema`, `validate_records`, and a schema
+fingerprint.
+
+**`BaseBronzeWriter`** owns storage: where a partition lands, how it is written verbatim,
+and how partition progress is recorded. `ParquetBronzeWriter` is the implementation; its
+partition column is configurable, so a monthly dataset reuses it unchanged.
+
+**`CrimeDownloader`** is the only implementation today. No other dataset is ingested yet.
+
+### Dataset catalog
+
+`data/reference/dataset_catalog.parquet` answers, without opening a data file, what this
+project ingests and whether it can currently be trusted. One row per dataset:
+`dataset_id`, `dataset_name`, `source`, `primary_key`, `date_column`, `refresh_frequency`,
+`bronze_location`, `schema_version`, `last_verified`, `status`.
+
+`schema_version` is a fingerprint of the source's column set, so a **changed fingerprint is
+itself the drift signal**. `status` describes the dataset, not a run: `active` means the
+schema validated on the last attempt; `blocked` means a required column has gone missing and
+nothing downstream should trust this dataset until a human looks at it.
 
 ## Design principles
 

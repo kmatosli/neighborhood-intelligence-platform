@@ -34,6 +34,19 @@ uv run python scripts/pull_crime_sample.py
 uv run pytest
 ```
 
+## Historical ingestion
+
+Downloads raw crime records into the Bronze layer, one calendar year per Parquet file. Paged, retried, and restartable.
+
+```powershell
+uv run python scripts/download_crime_history.py --year 2024
+uv run python scripts/download_crime_history.py --start-year 2006 --end-year 2012
+uv run python scripts/download_crime_history.py --resume
+uv run python scripts/download_crime_history.py --year 2024 --force
+```
+
+Output lands in `data/bronze/crime/` (`<year>.parquet`, `manifest.parquet`, `refresh_log.parquet`) with logs in `logs/`. Records are stored exactly as published — no filtering, no cleaning, no neighborhood assignment. Geography fields are preserved for later GIS work.
+
 ## Quality checks
 
 ```powershell
