@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "bronzeville-woodlawn-observatory"
 version = "0.1.0"
@@ -23,6 +27,9 @@ dev = [
   "pandas-stubs>=2.2.0.240807",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/bw_observatory"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -36,5 +43,4 @@ strict = true
 packages = ["bw_observatory"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
 testpaths = ["tests"]
