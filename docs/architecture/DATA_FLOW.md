@@ -58,14 +58,25 @@ and conform crime groupings using a documented, configurable mapping.
 
 Source field names and values are preserved alongside normalized ones.
 
-## 7. Spatial assignment · NOT BUILT
+## 7. Spatial assignment · BUILT (Bronzeville blocked)
 
-Point-in-polygon: each record with coordinates is tested against the approved Bronzeville
-GeoJSON and the Woodlawn community-area polygon. Records fall into Bronzeville, Woodlawn,
-neither, or unassigned (no coordinates).
+Point-in-polygon against the official layers: community area, ward, police beat, police
+district, census tract, and census block group. Woodlawn resolves from the official
+community-area polygon.
 
-No ward, beat, ZIP, or single community area is used as a substitute. Blocked on the
-Bronzeville boundary being approved.
+**Bronzeville remains blocked**: it needs an approved custom GeoJSON, and until one exists
+`neighborhood_bronzeville` is null on every record. No ward, beat, ZIP, or single community
+area is used as a substitute.
+
+Every record's outcome is an explicit status — `assigned`, `missing_coordinates`,
+`invalid_coordinates`, `outside_chicago_boundaries`, `ambiguous_overlap`, or
+`bronzeville_boundary_unavailable` — never a single generic null. Source-reported ward, beat,
+district, and community area are preserved alongside the derived values and compared, with
+mismatch flags.
+
+Boundaries are **current**, so a historical incident is assigned to the geography it falls in
+*today*. Each row records its `boundary_vintage`. Implemented by
+`src/bw_observatory/geography/assign.py`.
 
 ## 8. Aggregation — Gold · NOT BUILT
 

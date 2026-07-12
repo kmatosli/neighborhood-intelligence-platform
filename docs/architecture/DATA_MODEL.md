@@ -24,7 +24,10 @@ The core fact table.
 **Notes.** `latitude`/`longitude`/`neighborhood_key` are nullable by design. Corrections
 are handled by keeping the row with the newest `updated_on` for a given `id`.
 
-**Status.** `Partial` — validation contract exists; no table.
+**Status.** `Partial` — raw records land in Bronze (`data/bronze/crime/<year>.parquet`), and
+`data/silver/crime/crime_with_geography/<year>.parquet` adds spatial assignment. Silver
+normalization of the crime record itself (typing, dedup, corrections, groupings) is still
+not built.
 
 ---
 
@@ -74,7 +77,10 @@ areas, and any other official geography we ingest).
 **Major fields.** `geography_key`, `geography_type` (e.g. `community_area`), `source_id`,
 `name`, `geometry`, `source_dataset_id`, `ingested_at`.
 
-**Status.** `Not built`.
+**Status.** `Built` — `data/silver/geography/geography_dimension.parquet`. Seven layers:
+community areas, wards (2023-), police beats, police districts (derived), census tracts,
+census block groups, ZIP codes (secondary). Geometry stored as WKT in EPSG:4326; raw GeoJSON
+preserved under `data/reference/chicago/<version>/`.
 
 ---
 
@@ -94,7 +100,9 @@ must carry its own approved boundary and provenance.
 every historical number, so the version must be recorded with published figures. See
 [ADR-0004](ADR/ADR-0004-neighborhood-boundary-strategy.md).
 
-**Status.** `Not built` — Bronzeville boundary not yet approved.
+**Status.** `Built` — `data/silver/geography/neighborhood_boundaries.parquet`, driven by
+`config/neighborhoods/neighborhoods.yml`. **Woodlawn is active** (official community area 42).
+**Bronzeville is `blocked_pending_approval`** and carries no geometry; no substitute is used.
 
 ---
 

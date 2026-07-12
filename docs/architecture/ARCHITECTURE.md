@@ -2,12 +2,12 @@
 
 ## Current phase
 
-**The repository is in the data-foundation phase.** A verified Chicago Socrata client and
-a validation layer exist. There is no storage layer, no geography, no analytical tables,
-no API, and no web application. Everything downstream of "source validation" below is
-planned, not built.
+**The repository is in the data-foundation phase.** Raw crime ingestion and the geography
+layer are built: boundaries are downloaded and versioned, and crime records are assigned to
+official geographies by point-in-polygon. There is still no Silver normalization of crime
+itself, no analytical (Gold) tables, no API, and no web application.
 
-Do not read the pipeline diagram as a description of running code.
+Bronzeville assignment is **blocked** pending an approved boundary.
 
 ## Target pipeline
 
@@ -18,13 +18,13 @@ Official source APIs
 Source validation          ← metadata schema + record contract   [BUILT for crime]
         │
         ▼
-Bronze raw layer           ← immutable, as-published             [NOT BUILT]
+Bronze raw layer           ← immutable, as-published             [BUILT for crime]
         │
         ▼
 Silver normalized layer    ← typed, deduplicated, conformed      [NOT BUILT]
         │
         ▼
-GIS enrichment             ← point-in-polygon neighborhood       [NOT BUILT]
+GIS enrichment             ← point-in-polygon neighborhood       [BUILT; Bronzeville blocked]
         │
         ▼
 Gold analytical tables     ← aggregates the site actually reads  [NOT BUILT]
@@ -51,13 +51,22 @@ Each stage is described step by step in [DATA_FLOW.md](DATA_FLOW.md).
 | **Crime downloader** | `src/bw_observatory/ingest/crime_history.py` | `CrimeDownloader`, the first implementation. Supplies only the year window, record contract, and schema rules |
 | Logging | `src/bw_observatory/logging_config.py` | `logs/download.log`, `logs/api.log`, `logs/validation.log` |
 | Historical ingestion | `scripts/download_crime_history.py` | `--year`, `--start-year`, `--end-year`, `--resume`, `--force` |
+| **Geography sources** | `src/bw_observatory/geography/sources.py` | 7 official boundary layers, dataset IDs confirmed against the portal catalog |
+| **Boundary ingest** | `src/bw_observatory/geography/ingest.py` | Versioned download to `data/reference/chicago/<version>/` + manifest |
+| **Geometry validation** | `src/bw_observatory/geography/validation.py` | CRS, repair, duplicates, overlaps, area QA |
+| **Silver geography** | `src/bw_observatory/geography/normalize.py` | `geography_dimension`, `neighborhood_boundaries` |
+| **Spatial assignment** | `src/bw_observatory/geography/assign.py` | Point-in-polygon enrichment, explicit statuses, mismatch flags |
+| Geography scripts | `scripts/download_geography.py`, `validate_geography.py`, `enrich_crime_geography.py` | Download, validate, enrich |
 | API check | `scripts/check_crime_api.py` | Validates metadata, pulls 10 live records, blocks on core fields, warns on coordinates |
 | Sample pull | `scripts/pull_crime_sample.py` | Writes a JSON sample to `data/bronze/` (JSON, not Parquet — interim) |
 | CI | `.github/workflows/ci.yml` | Ruff, Ruff format, mypy, pytest |
 
-`data/bronze/crime/` now holds year-partitioned raw crime data plus `manifest.parquet` and
-`refresh_log.parquet`; `data/reference/` holds `dataset_catalog.parquet`. Still empty:
-`data/silver/`, `data/gold/`, and `config/neighborhoods/`.
+`data/bronze/crime/` holds year-partitioned raw crime data plus `manifest.parquet` and
+`refresh_log.parquet`. `data/reference/` holds `dataset_catalog.parquet` and the versioned
+boundary sets under `chicago/<version>/`. `data/silver/geography/` holds
+`geography_dimension.parquet`, `neighborhood_boundaries.parquet`, and
+`geography_quality.parquet`; `data/silver/crime/crime_with_geography/` holds the enriched
+year partitions. `config/neighborhoods/` holds `neighborhoods.yml`. Still empty: `data/gold/`.
 
 ## The ingestion framework
 
@@ -88,6 +97,25 @@ project ingests and whether it can currently be trusted. One row per dataset:
 itself the drift signal**. `status` describes the dataset, not a run: `active` means the
 schema validated on the last attempt; `blocked` means a required column has gone missing and
 nothing downstream should trust this dataset until a human looks at it.
+
+## Geography layer
+
+Seven official boundary layers, downloaded into **versioned** reference storage
+(`data/reference/chicago/<version>/`) with a manifest recording dataset ID, CRS, feature
+count, checksums, geometry hash, vintage, and download timestamp. Boundaries move, so a
+boundary set is never overwritten in place.
+
+**CRS.** EPSG:4326 for interchange; EPSG:26971 (Illinois East, metres) for area and overlap.
+Area is never computed in degrees.
+
+**Assignment** is point-in-polygon only. Woodlawn uses the official community-area polygon.
+Bronzeville requires an approved custom GeoJSON and is **blocked** until one exists — no ward,
+beat, ZIP, or single community area is ever substituted. Wards 3 and 20 are retained as
+separate political-accountability layers, never as neighborhood definitions.
+
+**Source-reported geography is preserved alongside spatially derived geography** and the two
+are compared, so disagreement is visible rather than silently resolved. Records without
+coordinates are kept with `geography_status = missing_coordinates`.
 
 ## Design principles
 

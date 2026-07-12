@@ -1,7 +1,14 @@
 # ADR-0004 — Neighborhood boundary strategy
 
 **Status.** Proposed — the Bronzeville boundary is **not yet approved**
-**Date.** 2026-07-11
+**Date.** 2026-07-11 · **Updated.** 2026-07-12 (Feature 0003)
+
+> **Implementation note (2026-07-12).** The geography layer is now built and this decision is
+> enforced in code: Woodlawn resolves from the official community-area polygon and is active;
+> Bronzeville looks for an approved polygon at `config/neighborhoods/bronzeville.geojson`,
+> finds none, and is recorded `blocked_pending_approval`. `neighborhood_bronzeville` is left
+> **null** on every record — never `false`, and never derived from Ward 3, a beat, a ZIP, or a
+> single community area. This ADR stays **Proposed** until a polygon is approved.
 
 ## Context
 

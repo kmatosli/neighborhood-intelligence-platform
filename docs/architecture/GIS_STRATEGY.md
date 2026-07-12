@@ -43,15 +43,49 @@ Changing the Bronzeville polygon changes every historical number derived from it
 boundary is therefore versioned, and published figures record which version produced them.
 A boundary change is a documented event, not a silent edit.
 
+## Boundary vintage — current boundaries are not historical boundaries
+
+Boundaries move. Wards were redrawn for 2023; police beats and districts were redrawn
+effective 2012-12-19; census tracts are 2010 vintage. The project currently assigns **every**
+incident, back to 2006, against **current** boundaries.
+
+**Assigning a 2006 incident to a 2023 ward tells you which ward that location is in today —
+not which ward it was in at the time.** That is not historical-boundary assignment, and it
+must never be presented as such. A ward-level trend spanning a redistricting is comparing
+two different areas.
+
+Community areas are the stable exception, which is one more reason Woodlawn's official
+polygon is trustworthy for long time series and ward figures are not.
+
+Every enriched record therefore carries a `boundary_vintage` field recording which vintage
+produced its assignment, and every boundary set is versioned under
+`data/reference/chicago/<version>/`.
+
+## Coordinate systems
+
+- **EPSG:4326** — public interchange. Every stored GeoJSON and every Silver geometry.
+- **EPSG:26971** (NAD83 / Illinois East, metres) — all area, distance, and overlap work.
+
+Area is never computed in latitude/longitude degrees. A degree is not a unit of length, so a
+"square degree" is not an area.
+
 ## Status
 
 | Item | Status |
 | --- | --- |
-| Woodlawn official community-area polygon ingested | **Not built** |
-| Bronzeville custom GeoJSON drafted | **Not built** |
-| Bronzeville boundary approved | **Not approved** |
-| Point-in-polygon assignment | **Not built** |
-| `config/neighborhoods/` directory | Exists, empty |
+| Official boundary layers downloaded and versioned | **Built** — 7 layers |
+| Geometry validation (CRS, repair, duplicates, overlaps, area QA) | **Built** |
+| Silver `geography_dimension` / `neighborhood_boundaries` | **Built** |
+| Woodlawn official community-area polygon ingested | **Built** — active |
+| Point-in-polygon assignment | **Built** — 2024 enriched |
+| Bronzeville custom GeoJSON drafted | **Not drafted** |
+| Bronzeville boundary approved | **Not approved — assignment blocked** |
+| `config/neighborhoods/neighborhoods.yml` | **Built** |
+| `config/neighborhoods/bronzeville.geojson` | **Absent by design** — documented expected path |
+
+While Bronzeville is blocked, `neighborhood_bronzeville` is **null** on every record. Null
+means "not yet defined", never "not in Bronzeville" — collapsing the two would publish a
+false negative for every resident of the neighborhood.
 
 Geography work is **blocked** on the Bronzeville boundary being defined and approved. See
 [ADR-0004](ADR/ADR-0004-neighborhood-boundary-strategy.md).
