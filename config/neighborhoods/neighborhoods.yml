@@ -1,0 +1,33 @@
+# Canonical study neighborhoods.
+#
+# Woodlawn corresponds to an official City of Chicago community area and uses that polygon.
+# Bronzeville does NOT correspond to one official community area. It requires a separately
+# approved custom GeoJSON at config/neighborhoods/bronzeville.geojson.
+#
+# Until that file exists and is approved, Bronzeville assignment is BLOCKED. It must never
+# be approximated from Ward 3, a police beat, a ZIP code, or a single community area.
+# See docs/architecture/ADR/ADR-0004-neighborhood-boundary-strategy.md
+
+neighborhoods:
+  - neighborhood_id: woodlawn
+    display_name: Woodlawn
+    boundary_type: official_community_area
+    source: "City of Chicago - Boundaries - Community Areas (igwz-8jzy), community area 42"
+    source_vintage: "1920"
+    status: active
+    notes: >-
+      Official community-area polygon. Woodlawn is the one study area with an authoritative
+      boundary; no custom definition is needed or permitted.
+
+  - neighborhood_id: bronzeville
+    display_name: Bronzeville
+    boundary_type: custom_geojson
+    source: "Approved project boundary - config/neighborhoods/bronzeville.geojson"
+    source_vintage: ""
+    status: blocked_pending_approval
+    notes: >-
+      Bronzeville is not one official community area. It is historically associated with
+      parts of Douglas and Grand Boulevard, and depending on who is asked, Oakland, Fuller
+      Park, or Washington Park in whole or in part. No approved polygon exists yet, so
+      assignment is blocked and neighborhood_bronzeville is left null on every record.
+      Null means "not yet defined", not "not in Bronzeville". Do not substitute Ward 3.

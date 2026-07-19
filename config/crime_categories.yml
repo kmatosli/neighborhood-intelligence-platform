@@ -1,0 +1,148 @@
+# Crime groupings — the single source of truth.
+#
+# Values are official Chicago `primary_type` values from dataset ijzp-q8t2, matched exactly
+# (case-insensitively). Grouping choices change what a trend looks like, so they are a
+# methodological claim, not an implementation detail: they live here, they are published on
+# the Methodology page, and they are NEVER duplicated inside application or React code.
+# See docs/methodology/CRIME.md.
+#
+# IMPORTANT — these categories overlap and do NOT sum to the total.
+#   * burglary is a subset of property_crime
+#   * vehicle_related_crime is a subset of property_crime
+#   * "OTHER OFFENSE", "NARCOTICS", "WEAPONS VIOLATION" and others belong to no category here
+# Never present the categories as a breakdown of the total.
+
+categories:
+  violent_crime:
+    label: Violent crime
+    description: >-
+      Reported incidents against a person. Counts reports, not convictions.
+    primary_types:
+      - HOMICIDE
+      - CRIMINAL SEXUAL ASSAULT
+      - CRIM SEXUAL ASSAULT       # the dataset's older spelling; both appear historically
+      - ROBBERY
+      - ASSAULT
+      - BATTERY
+
+  property_crime:
+    label: Property crime
+    description: >-
+      Reported incidents against property.
+    primary_types:
+      - BURGLARY
+      - THEFT
+      - MOTOR VEHICLE THEFT
+      - ARSON
+      - CRIMINAL DAMAGE
+      - CRIMINAL TRESPASS
+
+  vehicle_related_crime:
+    label: Vehicle-related crime
+    description: >-
+      Motor vehicle theft. NOTE: theft *from* a vehicle is recorded by Chicago in the
+      `description` field, not in `primary_type`, so it is not counted here. This figure is
+      therefore narrower than what a resident may mean by "car break-ins", and the page must
+      not imply otherwise.
+    primary_types:
+      - MOTOR VEHICLE THEFT
+
+  burglary:
+    label: Burglary
+    description: >-
+      Reported burglary. A subset of property crime.
+    primary_types:
+      - BURGLARY
+
+# ----------------------------------------------------------------------------------------
+# Broad categories — a PARTITION, unlike the overlapping analytic `categories` above.
+#
+# Every published `primary_type` maps to exactly one broad category, so these DO sum to the
+# total. Residents see six plain-language buckets instead of ~31 CPD codes. Any primary_type
+# not listed here (a new or historical code) maps to `Other` via `unmapped_broad_category`;
+# no record is ever silently dropped. The raw CPD `primary_type` stays available in the
+# incident table and the category-driver table for anyone who wants the detail.
+#
+# Authored against the real distinct `primary_type` values in dataset ijzp-q8t2 (2006-2026).
+# Judgement calls are documented in docs/methodology/CRIME.md:
+#   * DECEPTIVE PRACTICE (fraud) is grouped under Property.
+#   * OFFENSE INVOLVING CHILDREN, SEX OFFENSE, STALKING, KIDNAPPING, INTIMIDATION and
+#     HUMAN TRAFFICKING are person-directed and grouped under Violent.
+#   * CONCEALED CARRY LICENSE VIOLATION is grouped under Weapons.
+# ----------------------------------------------------------------------------------------
+
+unmapped_broad_category: other
+
+broad_categories:
+  violent_crime:
+    label: Violent crime
+    description: >-
+      Reported incidents directed at a person. Counts reports, not convictions.
+    primary_types:
+      - HOMICIDE
+      - CRIMINAL SEXUAL ASSAULT
+      - CRIM SEXUAL ASSAULT
+      - ROBBERY
+      - ASSAULT
+      - BATTERY
+      - SEX OFFENSE
+      - OFFENSE INVOLVING CHILDREN
+      - STALKING
+      - KIDNAPPING
+      - INTIMIDATION
+      - HUMAN TRAFFICKING
+
+  property_crime:
+    label: Property crime
+    description: >-
+      Reported incidents against property, including theft, damage, and fraud.
+    primary_types:
+      - THEFT
+      - MOTOR VEHICLE THEFT
+      - BURGLARY
+      - CRIMINAL DAMAGE
+      - CRIMINAL TRESPASS
+      - ARSON
+      - DECEPTIVE PRACTICE
+
+  public_order:
+    label: Public order
+    description: >-
+      Reported public-order offenses, such as public-peace, liquor, and vice offenses.
+    primary_types:
+      - PUBLIC PEACE VIOLATION
+      - INTERFERENCE WITH PUBLIC OFFICER
+      - LIQUOR LAW VIOLATION
+      - PROSTITUTION
+      - GAMBLING
+      - PUBLIC INDECENCY
+      - OBSCENITY
+
+  weapons:
+    label: Weapons
+    description: >-
+      Reported weapons offenses.
+    primary_types:
+      - WEAPONS VIOLATION
+      - CONCEALED CARRY LICENSE VIOLATION
+
+  narcotics:
+    label: Narcotics
+    description: >-
+      Reported narcotics offenses.
+    primary_types:
+      - NARCOTICS
+      - OTHER NARCOTIC VIOLATION
+
+  other:
+    label: Other
+    description: >-
+      Reported incidents that do not fall into the categories above, plus any primary type
+      not yet mapped. Never silently dropped.
+    primary_types:
+      - OTHER OFFENSE
+      - NON-CRIMINAL
+      - NON - CRIMINAL
+      - NON-CRIMINAL (SUBJECT SPECIFIED)
+      - RITUALISM
+      - DOMESTIC VIOLENCE

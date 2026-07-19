@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from bw_observatory.clients.chicago_data import ChicagoDataClient
 from bw_observatory.config import Settings
