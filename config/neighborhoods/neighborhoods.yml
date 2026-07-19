@@ -12,7 +12,7 @@ neighborhoods:
   - neighborhood_id: woodlawn
     display_name: Woodlawn
     boundary_type: official_community_area
-    source: "City of Chicago — Boundaries - Community Areas (igwz-8jzy), community area 42"
+    source: "City of Chicago - Boundaries - Community Areas (igwz-8jzy), community area 42"
     source_vintage: "1920"
     status: active
     notes: >-
@@ -22,7 +22,7 @@ neighborhoods:
   - neighborhood_id: bronzeville
     display_name: Bronzeville
     boundary_type: custom_geojson
-    source: "Approved project boundary — config/neighborhoods/bronzeville.geojson"
+    source: "Approved project boundary - config/neighborhoods/bronzeville.geojson"
     source_vintage: ""
     status: blocked_pending_approval
     notes: >-

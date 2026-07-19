@@ -23,6 +23,7 @@ import geopandas as gpd
 import pandas as pd
 import yaml
 
+from bw_observatory.config import REPO_ROOT, Settings
 from bw_observatory.geography.models import (
     INTERCHANGE_CRS,
     NeighborhoodConfig,
@@ -64,8 +65,9 @@ NEIGHBORHOOD_COLUMNS = [
     "notes",
 ]
 
-NEIGHBORHOOD_CONFIG = Path("config/neighborhoods/neighborhoods.yml")
-BRONZEVILLE_GEOJSON = Path("config/neighborhoods/bronzeville.geojson")
+# Anchored to the project root, not the working directory: the API resolves these in a
+# deployed container that was not started from the repository root.
+BRONZEVILLE_GEOJSON = REPO_ROOT / "config" / "neighborhoods" / "bronzeville.geojson"
 
 WOODLAWN_COMMUNITY_AREA = "WOODLAWN"
 
@@ -74,11 +76,13 @@ def geometry_hash(geometry: Any) -> str:
     return hashlib.sha256(geometry.wkb).hexdigest()[:16]
 
 
-def load_neighborhood_config(path: Path = NEIGHBORHOOD_CONFIG) -> list[NeighborhoodConfig]:
-    if not path.exists():
-        raise FileNotFoundError(f"Neighborhood config not found: {path}")
+def load_neighborhood_config(path: Path | None = None) -> list[NeighborhoodConfig]:
+    """Resolved at call time so `BW_CONFIG_DIR` can move it without the CWD deciding."""
+    resolved = path or Settings().neighborhood_config
+    if not resolved.exists():
+        raise FileNotFoundError(f"Neighborhood config not found: {resolved}")
 
-    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    payload = yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}
     entries = payload.get("neighborhoods", [])
     return [
         NeighborhoodConfig(

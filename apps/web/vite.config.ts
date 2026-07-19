@@ -12,4 +12,18 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    server: {
+      // The frontend always calls the relative path /api/... — no host is hardcoded
+      // anywhere in the app. In local development that path is proxied to the FastAPI
+      // server; in any other environment the same relative path is served by whatever
+      // sits in front of the app.
+      proxy: {
+        "/api": {
+          target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000",
+          changeOrigin: true,
+        },
+      },
+    },
+  },
 });

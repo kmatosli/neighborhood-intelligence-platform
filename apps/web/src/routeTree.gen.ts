@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TrendsRouteImport } from './routes/trends'
 import { Route as CommunityChangeRouteImport } from './routes/community-change'
 import { Route as BeatMeetingRouteImport } from './routes/beat-meeting'
+import { Route as AuthorityRouteImport } from './routes/authority'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TrendsRoute = TrendsRouteImport.update({
@@ -29,6 +30,11 @@ const BeatMeetingRoute = BeatMeetingRouteImport.update({
   path: '/beat-meeting',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthorityRoute = AuthorityRouteImport.update({
+  id: '/authority',
+  path: '/authority',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -37,12 +43,14 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/authority': typeof AuthorityRoute
   '/beat-meeting': typeof BeatMeetingRoute
   '/community-change': typeof CommunityChangeRoute
   '/trends': typeof TrendsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/authority': typeof AuthorityRoute
   '/beat-meeting': typeof BeatMeetingRoute
   '/community-change': typeof CommunityChangeRoute
   '/trends': typeof TrendsRoute
@@ -50,20 +58,29 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/authority': typeof AuthorityRoute
   '/beat-meeting': typeof BeatMeetingRoute
   '/community-change': typeof CommunityChangeRoute
   '/trends': typeof TrendsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/beat-meeting' | '/community-change' | '/trends'
+  fullPaths:
+    '/' | '/authority' | '/beat-meeting' | '/community-change' | '/trends'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/beat-meeting' | '/community-change' | '/trends'
-  id: '__root__' | '/' | '/beat-meeting' | '/community-change' | '/trends'
+  to: '/' | '/authority' | '/beat-meeting' | '/community-change' | '/trends'
+  id:
+    | '__root__'
+    | '/'
+    | '/authority'
+    | '/beat-meeting'
+    | '/community-change'
+    | '/trends'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthorityRoute: typeof AuthorityRoute
   BeatMeetingRoute: typeof BeatMeetingRoute
   CommunityChangeRoute: typeof CommunityChangeRoute
   TrendsRoute: typeof TrendsRoute
@@ -92,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BeatMeetingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/authority': {
+      id: '/authority'
+      path: '/authority'
+      fullPath: '/authority'
+      preLoaderRoute: typeof AuthorityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -104,6 +128,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthorityRoute: AuthorityRoute,
   BeatMeetingRoute: BeatMeetingRoute,
   CommunityChangeRoute: CommunityChangeRoute,
   TrendsRoute: TrendsRoute,

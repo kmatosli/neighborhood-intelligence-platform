@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { WireShell, DisclosureNote } from "@/components/WireShell";
+import { WireShell } from "@/components/WireShell";
+import { useBrief } from "@/lib/brief";
 
 export const Route = createFileRoute("/beat-meeting")({
   head: () => ({
@@ -8,7 +9,7 @@ export const Route = createFileRoute("/beat-meeting")({
       {
         name: "description",
         content:
-          "One-page brief for the next CAPS beat meeting: recurring patterns, questions to ask, and who has authority to act.",
+          "One-page brief for the next CAPS beat meeting: recurring patterns, questions to ask, and who has authority to act. Patterns are not yet connected to validated live data.",
       },
     ],
   }),
@@ -24,55 +25,65 @@ function BeatMeeting() {
           <h1 className="font-serif text-2xl leading-snug sm:text-3xl">
             What should residents ask at the next beat meeting?
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            A one-page brief you can print or bring on your phone. All patterns
-            below are from reported incidents in the last 90 days.
-          </p>
         </div>
+        {/* Disabled: neither export exists yet, and a button that does nothing when pressed
+            reads as a broken site rather than an unfinished one. */}
         <div className="flex gap-2">
-          <button className="rounded-md border bg-card px-3 py-1.5 text-sm hover:bg-accent">
+          <button
+            type="button"
+            disabled
+            aria-describedby="exports-pending"
+            className="cursor-not-allowed rounded-md border bg-muted px-3 py-1.5 text-sm text-muted-foreground opacity-70"
+          >
             Print
           </button>
-          <button className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">
+          <button
+            type="button"
+            disabled
+            aria-describedby="exports-pending"
+            className="cursor-not-allowed rounded-md border bg-muted px-3 py-1.5 text-sm text-muted-foreground opacity-70"
+          >
             Download PDF
           </button>
+          <span id="exports-pending" className="sr-only">
+            Export is unavailable until this page is connected to live data
+          </span>
         </div>
       </section>
 
-      {/* Beat selector */}
+      <p className="mb-6 rounded-md border bg-caution/20 p-3 text-base" role="note">
+        <strong>Live data coming soon.</strong> The automated pattern detection below is not yet
+        connected to validated live data. The issues <em>you</em> added from the Overview page,
+        however, carry live figures and appear first.
+      </p>
+
+      <YourBrief />
+
+      {/* Beat selector — kept in place, disabled until it selects against real data. */}
       <section className="mb-6 grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
-        <div>
-          <label htmlFor="beat" className="wire-label mb-1 block">Beat</label>
-          <select id="beat" className="w-full rounded-md border bg-background px-2 py-1.5 text-sm" defaultValue="0313">
-            <option>0311</option>
-            <option>0312</option>
-            <option>0313 — East Woodlawn</option>
-            <option>0314</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="window" className="wire-label mb-1 block">Window</label>
-          <select id="window" className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
-            <option>Last 30 days</option>
-            <option>Last 90 days</option>
-            <option>Last 365 days</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="cmp" className="wire-label mb-1 block">Compare with</label>
-          <select id="cmp" className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
-            <option>Same 90 days, prior year</option>
-            <option>Prior 90 days</option>
-          </select>
-        </div>
+        <p id="controls-pending" className="wire-label sm:col-span-3">
+          Controls are disabled until this page is connected to live data
+        </p>
+        <Control label="Beat" id="beat" options={["0311", "0312", "0313", "0314"]} />
+        <Control
+          label="Window"
+          id="window"
+          options={["Last 30 days", "Last 90 days", "Last 365 days"]}
+        />
+        <Control
+          label="Compare with"
+          id="cmp"
+          options={["Same 90 days, prior year", "Prior 90 days"]}
+        />
       </section>
 
-      {/* Snapshot */}
+      {/* Snapshot — the tiles stay so the shape of the brief is legible. No values, because
+          no value has been computed. A dash is not a zero and is not a guess. */}
       <section aria-label="Snapshot" className="mb-8 grid gap-4 sm:grid-cols-4">
-        <Stat label="Reports (90d)" value="184" delta="−12 vs prior year" tone="down" />
-        <Stat label="Violent" value="27" delta="−6" tone="down" />
-        <Stat label="Property" value="98" delta="+18" tone="up" />
-        <Stat label="Quality of life" value="59" delta="−1" tone="steady" />
+        <PendingStat label="Reports (90d)" />
+        <PendingStat label="Violent" />
+        <PendingStat label="Property" />
+        <PendingStat label="Quality of life" />
       </section>
 
       {/* Recurring patterns */}
@@ -80,61 +91,62 @@ function BeatMeeting() {
         <h2 id="patterns" className="font-serif text-xl">
           Recurring patterns
         </h2>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Pattern
-            title="Theft from vehicles, weekday overnights"
-            body="Reports cluster Tuesday–Thursday between 10 PM and 4 AM, most often along commercial cross streets. 34 reports in the last 90 days, up from 22."
-          />
-          <Pattern
-            title="Retail theft, Friday afternoons"
-            body="Reports concentrate near the 63rd Street commercial strip between 2 PM and 6 PM. 19 reports, similar to prior period."
-          />
-          <Pattern
-            title="Graffiti and criminal damage, alleys"
-            body="Recurring in mid-block alleys south of 65th. 28 reports in 90 days, roughly flat."
-          />
-          <Pattern
-            title="Robbery near transit stops, evenings"
-            body="Small number of reports (7 in 90 days) near Green Line stops between 6 PM and 10 PM. Below last year."
-          />
-        </div>
+        <PendingVisual
+          height={200}
+          planned="Recurring clusters of reported incidents by type, day of week, and time of day, described in plain language. Locations will be general areas, never addresses."
+        />
         <p className="mt-2 text-xs text-muted-foreground">
-          Locations are shown as general areas, not addresses.
+          Pattern detection runs on reported incidents only. A reported incident is not a
+          conviction, and a cluster of reports is not proof of a cause.
         </p>
       </section>
 
       {/* Questions */}
       <section aria-labelledby="qs" className="mb-8">
-        <h2 id="qs" className="font-serif text-xl">Five questions to ask</h2>
-        <ol className="mt-3 space-y-2 rounded-lg border bg-card p-4 text-sm">
-          <li>1. What is the district's plan for the overnight vehicle-break-in pattern on the commercial cross streets?</li>
-          <li>2. Which streetlights along that corridor have been out for more than 30 days, and who is coordinating repair with CDOT?</li>
-          <li>3. How many of last quarter's vehicle-break-in reports resulted in an arrest, and how many were charged?</li>
-          <li>4. What has the ward office committed to fund for lighting or camera improvements this year?</li>
-          <li>5. When is the next problem-solving session for this beat, and how do residents contribute?</li>
-        </ol>
+        <h2 id="qs" className="font-serif text-xl">
+          Questions to ask
+        </h2>
+        <PendingVisual
+          height={160}
+          planned="Questions generated from the patterns actually found in the selected beat and window, each naming the office that can answer it."
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          These questions will follow from the data. Publishing a fixed list before the patterns
+          exist would put words in residents&rsquo; mouths about problems no one has measured.
+        </p>
       </section>
 
-      {/* Who is responsible */}
+      {/* Who has authority to act — civic reference, not derived from crime data, so it stands
+          on its own and stays live. */}
       <section aria-labelledby="resp">
-        <h2 id="resp" className="font-serif text-xl">Who has authority to act</h2>
-        <div className="mt-3 overflow-hidden rounded-lg border bg-card">
-          <table className="w-full text-left text-sm">
+        <h2 id="resp" className="font-serif text-xl">
+          Who has authority to act
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Reference information about which office is responsible for what. This does not depend
+          on the crime data and is shown in full.
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full min-w-[32rem] text-left text-sm">
             <thead className="bg-muted/60 text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-3 py-2">Need</th>
-                <th className="px-3 py-2">Primary responsibility</th>
+                <th scope="col" className="px-3 py-2">
+                  Need
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Primary responsibility
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {[
                 ["Report and evidence intake", "CPD"],
-                ["Pattern investigation", "CPD 003rd District detectives"],
+                ["Pattern investigation", "CPD district detectives"],
                 ["Charging after arrest", "Cook County State's Attorney"],
                 ["Lighting assessment", "CDOT + ward coordination"],
                 ["Public meeting response", "District commander / CAPS"],
                 ["Budget and citywide priorities", "Mayor & City Council"],
-                ["Recorded ward commitments", "20th Ward Alderman's office"],
+                ["Recorded ward commitments", "Ward Alderman's office"],
               ].map(([need, who]) => (
                 <tr key={need}>
                   <td className="px-3 py-2">{need}</td>
@@ -145,52 +157,143 @@ function BeatMeeting() {
           </table>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          No single office controls the whole outcome. Ask each authority for
-          their specific piece.
+          No single office controls the whole outcome. Ask each authority for their specific piece.
         </p>
       </section>
-
-      <DisclosureNote>
-        Patterns are computed from reported incidents in the selected beat over
-        the selected window. Small counts are noted, and specific addresses are
-        withheld to protect residents. Arrest and charging figures come from CPD
-        and the Cook County State's Attorney open data.
-      </DisclosureNote>
     </WireShell>
   );
 }
 
-function Stat({
-  label,
-  value,
-  delta,
-  tone,
-}: {
-  label: string;
-  value: string;
-  delta: string;
-  tone: "up" | "down" | "steady";
-}) {
-  const cls =
-    tone === "down"
-      ? "text-primary"
-      : tone === "up"
-        ? "text-caution-foreground"
-        : "text-muted-foreground";
+/**
+ * The issues a resident collected from other pages (currently the Overview). Each item already
+ * carries live figures computed on its source page, so this section shows real numbers even
+ * while automated pattern detection is still pending. This is the "Open my brief" destination.
+ */
+function YourBrief() {
+  const brief = useBrief();
+
+  if (brief.items.length === 0) {
+    return (
+      <section aria-labelledby="your-brief" className="mb-8 rounded-lg border border-dashed bg-card/50 p-4">
+        <h2 id="your-brief" className="font-serif text-xl">
+          Your brief is empty
+        </h2>
+        <p className="mt-1 text-base text-muted-foreground">
+          On the Overview page, use <strong>Add to brief</strong> on any issue to collect it here
+          for your beat meeting. Nothing is added automatically.
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="wire-label">{label}</div>
-      <div className="mt-1 font-serif text-3xl tabular-nums">{value}</div>
-      <div className={"text-xs tabular-nums " + cls}>{delta}</div>
+    <section aria-labelledby="your-brief" className="mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="your-brief" className="font-serif text-xl">
+          Your brief · {brief.items.length} issue{brief.items.length === 1 ? "" : "s"}
+        </h2>
+        <button
+          type="button"
+          onClick={() => brief.clear()}
+          className="min-h-11 rounded-md border bg-background px-3 py-2 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          Clear brief
+        </button>
+      </div>
+      <ol className="mt-3 space-y-3">
+        {brief.items.map((item) => (
+          <li key={item.id} className="rounded-lg border bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <h3 className="font-serif text-lg font-semibold">{item.title}</h3>
+              <button
+                type="button"
+                onClick={() => brief.remove(item.id)}
+                aria-label={`Remove ${item.title} from brief`}
+                className="min-h-11 rounded-md border bg-background px-3 py-1 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Remove
+              </button>
+            </div>
+            <dl className="mt-2 space-y-1 text-sm">
+              <BriefRow term="Supporting figure" desc={item.supportingStat} />
+              <BriefRow term="Comparison" desc={item.comparisonPeriod} />
+              {item.beat && <BriefRow term="Beat" desc={item.beat} />}
+              <BriefRow term="Responsible authority" desc={item.primaryAuthority} />
+              {item.alderpersonRole && <BriefRow term="Alderperson" desc={item.alderpersonRole} />}
+              {item.residentQuestion && <BriefRow term="Question to ask" desc={`“${item.residentQuestion}”`} />}
+              {item.evidence && <BriefRow term="Evidence" desc={item.evidence} />}
+            </dl>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Every figure here was computed from live data on the page that produced it. Printing this
+        brief will be added in a later milestone.
+      </p>
+    </section>
+  );
+}
+
+function BriefRow({ term, desc }: { term: string; desc: string }) {
+  return (
+    <div className="grid grid-cols-[9rem_1fr] gap-2">
+      <dt className="text-muted-foreground">{term}</dt>
+      <dd>{desc}</dd>
     </div>
   );
 }
 
-function Pattern({ title, body }: { title: string; body: string }) {
+/**
+ * A visualization with no validated data behind it yet. Renders no marks and no numbers, and
+ * names what is planned so the page still communicates its purpose.
+ */
+function PendingVisual({ height, planned }: { height: number; planned: string }) {
   return (
-    <article className="rounded-lg border bg-card p-4">
-      <h3 className="font-medium">{title}</h3>
-      <p className="mt-1 text-sm text-muted-foreground">{body}</p>
-    </article>
+    <div
+      className="mt-3 flex items-center justify-center rounded-md border border-dashed bg-muted/30 p-4 text-center"
+      style={{ minHeight: height }}
+      role="note"
+    >
+      <div className="max-w-md">
+        <p className="wire-label">Live data coming soon</p>
+        <p className="mt-1 text-base">
+          This visualization is not yet connected to validated live data.
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">Planned: {planned}</p>
+      </div>
+    </div>
+  );
+}
+
+/** A headline figure whose value has not been computed. The dash never stands in for zero. */
+function PendingStat({ label }: { label: string }) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="wire-label">{label}</div>
+      <div className="mt-1 font-serif text-3xl text-muted-foreground" aria-hidden="true">
+        —
+      </div>
+      <div className="text-xs text-muted-foreground">Live data coming soon</div>
+    </div>
+  );
+}
+
+function Control({ label, id, options }: { label: string; id: string; options: string[] }) {
+  return (
+    <div>
+      <label htmlFor={id} className="wire-label mb-1 block text-muted-foreground">
+        {label}
+      </label>
+      <select
+        id={id}
+        disabled
+        aria-describedby="controls-pending"
+        className="w-full cursor-not-allowed rounded-md border bg-muted px-2 py-1.5 text-sm text-muted-foreground opacity-70"
+      >
+        {options.map((o) => (
+          <option key={o}>{o}</option>
+        ))}
+      </select>
+    </div>
   );
 }
