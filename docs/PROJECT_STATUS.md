@@ -44,15 +44,53 @@ Last updated: 2026-07-11.
 - CI running Ruff, Ruff format, mypy (`strict`), and pytest
 - **42 tests passing; Ruff passing; mypy passing**
 
+## V2-004 — Crime refresh (2026-09-14)
+
+- **V2-004 — Crime refresh reliability and currentness.** Completed 2026-09-14 (local; not
+  committed or pushed). Re-scoped from the requested "311 refresh" once the repo showed the
+  app holds **no** 311 data (V2-003 stands); the dataset that had stopped in July was crime
+  (Bronze 2026 max `date` 2026-07-03, last pulled 2026-07-11).
+  - Why it stopped: the only loader was the whole-year downloader; nothing re-ran it. There
+    was no watermark and no incremental path.
+  - Built: `src/bw_observatory/ingest/crime_refresh.py` + `scripts/refresh_crime.py`
+    (`--dry-run`, `--since`). Watermark on the source's `updated_on` (verified: stamped on
+    insert and on every later edit, never null, one batch/day ≈15:45 UTC, seven-day lag);
+    upsert by `id` into the year partition of the record's `date` (cross-year moves handled);
+    manifest checksum rewritten so `bronze_integrity_verified` stays truthful; PIP enrichment
+    of only new/changed rows with the existing `GeographyAssigner`; quality row recomputed;
+    per-year local-vs-source row reconciliation (exposes deletions, which a watermark cannot
+    see); rich `incremental_refresh_log.parquet`; atomic file swaps; watermark advances only
+    on success. Also repairs a Silver partition that drifted from Bronze (found on 2024: 18
+    Bronze ids without Silver rows, 1 orphan Silver row, from the 2026-07-26 Bronze restore
+    that was never re-enriched).
+  - Fallback watermark with no prior refresh = the **minimum** over year partitions of each
+    partition's max `updated_on` (a disk-wide max would have skipped 2026-07-10 → 07-25 in
+    every year but 2024).
+  - `ChicagoDataClient.count_crimes()` added for reconciliation. 15 new tests
+    (`tests/test_crime_refresh.py`).
+  - Manual command: `uv run python scripts/refresh_crime.py`. Recommended cadence: daily,
+    after ~16:00 UTC. Not scheduled anywhere yet (see "Automation" below).
+  - Known limits: source deletions show as negative drift and need a `--force` year re-pull;
+    the OneDrive-synced working tree can stall a file swap for minutes (seen on 2017).
+  - Next data package remains **V2-005 — 311 service requests**, exactly as V2-003 selected.
+    Not started.
+
 ## Next feature
 
-**Incremental refresh using `updated_on` and `id`** — so that corrections the city publishes
-after the fact are picked up, rather than the Bronze layer freezing at whatever the backfill
-happened to see.
+~~**Incremental refresh using `updated_on` and `id`**~~ — done in V2-004 (2026-09-14);
+`scripts/refresh_crime.py`.
 
 Then, in order:
 
-1. Daily automated refresh
+1. Daily automated refresh — **Automation readiness (V2-004):** the manual command is
+   idempotent and restartable, so scheduling is a wrapper, not new logic. Still required
+   for production: (a) a place to run it with write access to the Render disk (`/var/data`)
+   — a Render cron job on the same disk, or run on the API service via `render` shell —
+   since the API itself is read-only by design; (b) `CHICAGO_DATA_APP_TOKEN` for headroom
+   (the run works anonymously today); (c) an alert on `status = failed` or non-zero drift
+   in `incremental_refresh_log.parquet`; (d) a decision on whether the API should cache
+   nothing across a refresh (today it reads Parquet per request, so a refresh is visible
+   immediately — keep it that way).
 2. Bronzeville boundary definition (**blocked** — needs approval,
    [ADR-0004](architecture/ADR/ADR-0004-neighborhood-boundary-strategy.md))
 3. Woodlawn boundary ingestion

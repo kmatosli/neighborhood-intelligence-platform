@@ -47,6 +47,28 @@ uv run python scripts/download_crime_history.py --year 2024 --force
 
 Output lands in `data/bronze/crime/` (`<year>.parquet`, `manifest.parquet`, `refresh_log.parquet`) with logs in `logs/`. Records are stored exactly as published — no filtering, no cleaning, no neighborhood assignment. Geography fields are preserved for later GIS work.
 
+## Keeping crime data current (incremental refresh)
+
+The historical loader re-downloads whole years. To bring the data up to date, run the
+incremental refresh instead. It fetches only records whose source `updated_on` is at or after
+the last watermark (the portal stamps that column on every insert **and** every later edit),
+upserts them by `id` into the right year's Bronze file, updates the manifest checksum, and
+point-in-polygon enriches only the new or changed rows into Silver.
+
+```powershell
+uv run python scripts/refresh_crime.py --dry-run   # report what would change, write nothing
+uv run python scripts/refresh_crime.py             # apply
+```
+
+Safe to run repeatedly: an interrupted run restarts from the same watermark, and a second run
+with nothing new leaves every file byte-identical. Each run appends one row to
+`data/bronze/crime/incremental_refresh_log.parquet` (watermarks, rows fetched / inserted /
+updated / unchanged, per-year local-vs-source row reconciliation). The source publishes one
+batch a day and withholds the most recent seven days, so a daily run is the right cadence; a
+non-zero negative reconciliation drift means the city removed records, which only a
+`download_crime_history.py --year <y> --force` re-pull can reflect.
+
+
 ## Quality checks
 
 ```powershell

@@ -80,3 +80,31 @@ class ChicagoDataClient:
         if not all(isinstance(item, dict) for item in payload):
             raise ChicagoDataError("Crime response contained an invalid record.")
         return payload
+
+    def count_crimes(self, where: str | None = None) -> int:
+        """How many records the source holds for a filter. One aggregate request.
+
+        Used by the incremental refresh to reconcile a partition against the source: a
+        watermark on `updated_on` can only see rows that were inserted or modified, never
+        rows the city has since removed, so the row count is the one cheap signal of drift.
+        """
+        params: dict[str, str | int] = {"$select": "count(*) AS n"}
+        if where:
+            params["$where"] = where
+
+        try:
+            payload = self._request_json(self.settings.crime_data_url, params)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ChicagoDataError(f"Crime count request failed: {exc}") from exc
+
+        if (
+            not isinstance(payload, list)
+            or len(payload) != 1
+            or not isinstance(payload[0], dict)
+            or "n" not in payload[0]
+        ):
+            raise ChicagoDataError("Crime count response was not a single aggregate row.")
+        try:
+            return int(payload[0]["n"])
+        except (TypeError, ValueError) as exc:
+            raise ChicagoDataError(f"Crime count was not an integer: {payload[0]['n']!r}") from exc
