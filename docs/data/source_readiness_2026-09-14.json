@@ -1,0 +1,2675 @@
+[
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "ijzp-q8t2",
+    "name": "Crimes - 2001 to Present",
+    "dataset_type": "table",
+    "description": "This dataset reflects reported incidents of crime (with the exception of murders where data exists for each victim) that occurred in the City of Chicago from 2001 to present, minus the most recent seven days. Data is extracted from the Chicago Police Department's CLEAR (Citizen Law Enforcement Analysis and Reporting) system. In order to protect the privacy of crime victims, addresses are shown at the block level only and specific locations are not identified. Should you have questions about this dataset, you may contact the Data Fulfillment and Analysis Division of the Chicago Police Departmen",
+    "rows_updated_at": "2026-09-14T10:56:44+00:00",
+    "row_count": 8638534,
+    "columns": [
+      {
+        "field": "id",
+        "type": "number"
+      },
+      {
+        "field": "case_number",
+        "type": "text"
+      },
+      {
+        "field": "date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "block",
+        "type": "text"
+      },
+      {
+        "field": "iucr",
+        "type": "text"
+      },
+      {
+        "field": "primary_type",
+        "type": "text"
+      },
+      {
+        "field": "description",
+        "type": "text"
+      },
+      {
+        "field": "location_description",
+        "type": "text"
+      },
+      {
+        "field": "arrest",
+        "type": "checkbox"
+      },
+      {
+        "field": "domestic",
+        "type": "checkbox"
+      },
+      {
+        "field": "beat",
+        "type": "text"
+      },
+      {
+        "field": "district",
+        "type": "text"
+      },
+      {
+        "field": "ward",
+        "type": "number"
+      },
+      {
+        "field": "community_area",
+        "type": "text"
+      },
+      {
+        "field": "fbi_code",
+        "type": "text"
+      },
+      {
+        "field": "x_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "y_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "year",
+        "type": "number"
+      },
+      {
+        "field": "updated_on",
+        "type": "calendar_date"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "location"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": true,
+    "has_geometry": false,
+    "date_columns": [
+      "date",
+      "updated_on"
+    ],
+    "date_range": {
+      "column": "date",
+      "min": "2001-01-01T00:00:00.000",
+      "max": "2026-09-06T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:39.795705+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "v6vf-nfxy",
+    "name": "311 Service Requests",
+    "dataset_type": "table",
+    "description": "311 Service Requests received by the City of Chicago. This dataset includes requests created after the launch of the new 311 system on 12/18/2018 and some records from the previous system, indicated in the LEGACY_RECORD column.\r\n\r\nFor purposes of all columns indicating geographic areas or locations, please note that requests of the type 311 INFORMATION ONLY CALL often are entered with the address of the City's 311 Center.",
+    "rows_updated_at": "2026-09-14T18:32:49+00:00",
+    "row_count": 14638674,
+    "columns": [
+      {
+        "field": "sr_number",
+        "type": "text"
+      },
+      {
+        "field": "sr_type",
+        "type": "text"
+      },
+      {
+        "field": "sr_short_code",
+        "type": "text"
+      },
+      {
+        "field": "created_department",
+        "type": "text"
+      },
+      {
+        "field": "owner_department",
+        "type": "text"
+      },
+      {
+        "field": "status",
+        "type": "text"
+      },
+      {
+        "field": "origin",
+        "type": "text"
+      },
+      {
+        "field": "created_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "last_modified_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "closed_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "street_address",
+        "type": "text"
+      },
+      {
+        "field": "city",
+        "type": "text"
+      },
+      {
+        "field": "state",
+        "type": "text"
+      },
+      {
+        "field": "zip_code",
+        "type": "text"
+      },
+      {
+        "field": "street_number",
+        "type": "text"
+      },
+      {
+        "field": "street_direction",
+        "type": "text"
+      },
+      {
+        "field": "street_name",
+        "type": "text"
+      },
+      {
+        "field": "street_type",
+        "type": "text"
+      },
+      {
+        "field": "duplicate",
+        "type": "checkbox"
+      },
+      {
+        "field": "legacy_record",
+        "type": "checkbox"
+      },
+      {
+        "field": "legacy_sr_number",
+        "type": "text"
+      },
+      {
+        "field": "parent_sr_number",
+        "type": "text"
+      },
+      {
+        "field": "community_area",
+        "type": "number"
+      },
+      {
+        "field": "ward",
+        "type": "number"
+      },
+      {
+        "field": "electrical_district",
+        "type": "text"
+      },
+      {
+        "field": "electricity_grid",
+        "type": "text"
+      },
+      {
+        "field": "police_sector",
+        "type": "text"
+      },
+      {
+        "field": "police_district",
+        "type": "text"
+      },
+      {
+        "field": "police_beat",
+        "type": "text"
+      },
+      {
+        "field": "precinct",
+        "type": "text"
+      },
+      {
+        "field": "sanitation_division_days",
+        "type": "text"
+      },
+      {
+        "field": "created_hour",
+        "type": "number"
+      },
+      {
+        "field": "created_day_of_week",
+        "type": "number"
+      },
+      {
+        "field": "created_month",
+        "type": "number"
+      },
+      {
+        "field": "x_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "y_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "location"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": true,
+    "has_geometry": false,
+    "date_columns": [
+      "created_date",
+      "last_modified_date",
+      "closed_date"
+    ],
+    "date_range": {
+      "column": "created_date",
+      "min": "2018-07-01T03:42:31.000",
+      "max": "2026-09-13T13:39:48.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:41.228288+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "7as2-ds3y",
+    "name": "311 Service Requests - Pot Holes Reported - Historical",
+    "dataset_type": "table",
+    "description": "As described in https://data.cityofchicago.org/stories/s/311-Dataset-Changes-12-11-2018/d7nq-5g7t, the function of this dataset was replaced by https://data.cityofchicago.org/d/v6vf-nfxy. This dataset is historical-only.\r\n\r\nThe Chicago Department of Transportation (CDOT) oversees the patching of potholes on over 4,000 miles of arterial and residential streets in Chicago. CDOT receives reports of potholes through the 311 call center and uses a computerized mapping and tracking system to identify pothole locations and efficiently schedule crews.  One call to 311 can generate multiple pothole rep",
+    "rows_updated_at": "2019-03-05T10:35:45+00:00",
+    "row_count": 560478,
+    "columns": [
+      {
+        "field": "creation_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "status",
+        "type": "text"
+      },
+      {
+        "field": "completion_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "service_request_number",
+        "type": "text"
+      },
+      {
+        "field": "type_of_service_request",
+        "type": "text"
+      },
+      {
+        "field": "current_activity",
+        "type": "text"
+      },
+      {
+        "field": "most_recent_action",
+        "type": "text"
+      },
+      {
+        "field": "number_of_potholes_filled_on_block",
+        "type": "number"
+      },
+      {
+        "field": "street_address",
+        "type": "text"
+      },
+      {
+        "field": "zip",
+        "type": "number"
+      },
+      {
+        "field": "x_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "y_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "ward",
+        "type": "number"
+      },
+      {
+        "field": "police_district",
+        "type": "number"
+      },
+      {
+        "field": "community_area",
+        "type": "number"
+      },
+      {
+        "field": "ssa",
+        "type": "text"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "location"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": true,
+    "has_geometry": false,
+    "date_columns": [
+      "creation_date",
+      "completion_date"
+    ],
+    "date_range": {
+      "column": "creation_date",
+      "min": "2009-01-12T00:00:00.000",
+      "max": "2018-12-18T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:55.807208+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "fpsv-qjg3",
+    "name": "TIF Projections - 2025-2034",
+    "dataset_type": "table",
+    "description": "Projections for each Tax Increment Financing (TIF) district over the next 10 years, as published in the <a href=\"https://www.chicago.gov/content/dam/city/depts/dcd/tif/projections/projection-report-1025.pdf\" target=\"_blank\">\"10-Year TIF Projections\"</a> report on October 15, 2025.\n  \nTax Increment Financing is a special funding tool used by the City of Chicago to promote public and private investment across the city. Funds are used to build and repair roads and infrastructure, clean polluted land, and put vacant properties back to productive use, usually in conjunction with private development",
+    "rows_updated_at": "2025-11-18T18:42:06+00:00",
+    "row_count": 2246,
+    "columns": [
+      {
+        "field": "tif_district_id",
+        "type": "text"
+      },
+      {
+        "field": "tif_district_name",
+        "type": "text"
+      },
+      {
+        "field": "year_tif_ends",
+        "type": "number"
+      },
+      {
+        "field": "category_description",
+        "type": "text"
+      },
+      {
+        "field": "line_item_description",
+        "type": "text"
+      },
+      {
+        "field": "fund_and_project_balances",
+        "type": "number"
+      },
+      {
+        "field": "_2025",
+        "type": "number"
+      },
+      {
+        "field": "_2026",
+        "type": "number"
+      },
+      {
+        "field": "_2027",
+        "type": "number"
+      },
+      {
+        "field": "_2028",
+        "type": "number"
+      },
+      {
+        "field": "_2029",
+        "type": "number"
+      },
+      {
+        "field": "_2030",
+        "type": "number"
+      },
+      {
+        "field": "_2031",
+        "type": "number"
+      },
+      {
+        "field": "_2032",
+        "type": "number"
+      },
+      {
+        "field": "_2033",
+        "type": "number"
+      },
+      {
+        "field": "_2034",
+        "type": "number"
+      },
+      {
+        "field": "through_end_date",
+        "type": "number"
+      }
+    ],
+    "has_coordinates": false,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:56.852258+00:00",
+    "ward20_clip_capability": "no geographic field \u2014 administrative attribution only"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "72uz-ikdv",
+    "name": "Tax Increment Financing (TIF) Annual Report - Projects",
+    "dataset_type": "table",
+    "description": "A list of all active or completed projects or programs in a Redevelopment Project Area during the Reporting Year.\n\nFor the detailed reports for each TIF district for each year, please see https://www.chicago.gov/city/en/depts/dcd/supp_info/tif-district-annual-reports-2004-present.html.",
+    "rows_updated_at": "2026-08-31T15:59:28+00:00",
+    "row_count": 5782,
+    "columns": [
+      {
+        "field": "tif_number",
+        "type": "text"
+      },
+      {
+        "field": "tif_district",
+        "type": "text"
+      },
+      {
+        "field": "report_year",
+        "type": "number"
+      },
+      {
+        "field": "project_iga",
+        "type": "text"
+      },
+      {
+        "field": "project_type",
+        "type": "text"
+      },
+      {
+        "field": "project_number",
+        "type": "number"
+      },
+      {
+        "field": "project_name",
+        "type": "text"
+      },
+      {
+        "field": "annual_report_name",
+        "type": "text"
+      },
+      {
+        "field": "current_year_new_deals",
+        "type": "checkbox"
+      },
+      {
+        "field": "ongoing",
+        "type": "checkbox"
+      },
+      {
+        "field": "status",
+        "type": "text"
+      },
+      {
+        "field": "current_year_payments",
+        "type": "number"
+      },
+      {
+        "field": "estimated_next_year_payments",
+        "type": "number"
+      },
+      {
+        "field": "private_funds",
+        "type": "number"
+      },
+      {
+        "field": "private_funds_to_completion",
+        "type": "number"
+      },
+      {
+        "field": "public_funds",
+        "type": "number"
+      },
+      {
+        "field": "public_funds_to_completion",
+        "type": "number"
+      }
+    ],
+    "has_coordinates": false,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:57.437796+00:00",
+    "ward20_clip_capability": "no geographic field \u2014 administrative attribution only"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "mex4-ppfc",
+    "name": "Tax Increment Financing (TIF) Funded RDA and IGA Projects",
+    "dataset_type": "table",
+    "description": "Information on TIF-funded Redevelopment Agreements (RDA) and Intergovernmental Agreements (IGA) approved by City Council since the inception of the TIF program. This dataset does not include public Infrastructure projects.  More information on these projects, including documentation, is provided on the Department of Planning and Development\u2019s (DPD) TIF Portal at https://webapps1.chicago.gov/ChicagoTif. \n\nFor more information on the Tax Increment Financing program, please see http://cityofchicago.org/tif.",
+    "rows_updated_at": "2026-09-12T06:13:53+00:00",
+    "row_count": 761,
+    "columns": [
+      {
+        "field": "id",
+        "type": "text"
+      },
+      {
+        "field": "tif_district",
+        "type": "text"
+      },
+      {
+        "field": "project_name",
+        "type": "text"
+      },
+      {
+        "field": "address",
+        "type": "text"
+      },
+      {
+        "field": "developer",
+        "type": "text"
+      },
+      {
+        "field": "project_description",
+        "type": "text"
+      },
+      {
+        "field": "cdc_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "coc_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "approved_amount",
+        "type": "number"
+      },
+      {
+        "field": "total_project_cost",
+        "type": "number"
+      },
+      {
+        "field": "tif_subsidy_percentage",
+        "type": "number"
+      },
+      {
+        "field": "affordable_units",
+        "type": "number"
+      },
+      {
+        "field": "ward",
+        "type": "text"
+      },
+      {
+        "field": "community_area",
+        "type": "text"
+      },
+      {
+        "field": "x_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "y_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "location"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": true,
+    "has_geometry": false,
+    "date_columns": [
+      "cdc_date",
+      "coc_date"
+    ],
+    "date_range": {
+      "column": "cdc_date",
+      "min": "1986-12-18T00:00:00.000",
+      "max": "2026-07-15T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:57.981296+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "etqr-sz5x",
+    "name": "Financial Incentive Projects - Small Business Improvement Fund (SBIF)",
+    "dataset_type": "table",
+    "description": "Small Business Improvement Fund data includes all projects that have received a final grant payment since January, 2001. SBIF uses TIF revenues to provide reimbursement grants to small commercial and industrial businesses and property owners to help fund permanent improvements to their buildings and improve the appearance of their neighborhoods.",
+    "rows_updated_at": "2026-07-14T18:38:13+00:00",
+    "row_count": 2260,
+    "columns": [
+      {
+        "field": "project_name",
+        "type": "text"
+      },
+      {
+        "field": "applicant_name",
+        "type": "text"
+      },
+      {
+        "field": "address_number",
+        "type": "number"
+      },
+      {
+        "field": "address_number_high",
+        "type": "number"
+      },
+      {
+        "field": "street_direction",
+        "type": "text"
+      },
+      {
+        "field": "street_name",
+        "type": "text"
+      },
+      {
+        "field": "street_type",
+        "type": "text"
+      },
+      {
+        "field": "ward",
+        "type": "number"
+      },
+      {
+        "field": "community_area",
+        "type": "text"
+      },
+      {
+        "field": "tif_district",
+        "type": "text"
+      },
+      {
+        "field": "approval_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "completion_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "property_type",
+        "type": "text"
+      },
+      {
+        "field": "project_description",
+        "type": "text"
+      },
+      {
+        "field": "incentive_amount",
+        "type": "number"
+      },
+      {
+        "field": "total_project_cost",
+        "type": "number"
+      },
+      {
+        "field": "jobs_created_aspirational",
+        "type": "number"
+      },
+      {
+        "field": "jobs_retained_aspirational",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "point"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": true,
+    "has_geometry": true,
+    "date_columns": [
+      "approval_date",
+      "completion_date"
+    ],
+    "date_range": {
+      "column": "approval_date",
+      "min": "2006-12-07T00:00:00.000",
+      "max": "2025-12-05T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:39:59.318449+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "eejr-xtfb",
+    "name": "Boundaries - Tax Increment Financing Districts",
+    "dataset_type": "table",
+    "description": "Tax Increment Financing (TIF) district boundaries in Chicago. \n\nThis dataset is in a format for spatial datasets that is inherently tabular but allows for a map as a derived view. Please click the indicated link below for such a map. \n\nTo export the data in either tabular or geographic format, please use the Export button on this dataset.",
+    "rows_updated_at": "2026-01-27T22:10:49+00:00",
+    "row_count": 100,
+    "columns": [
+      {
+        "field": "the_geom",
+        "type": "multipolygon"
+      },
+      {
+        "field": "objectid",
+        "type": "number"
+      },
+      {
+        "field": "name",
+        "type": "text"
+      },
+      {
+        "field": "ref",
+        "type": "text"
+      },
+      {
+        "field": "ind",
+        "type": "text"
+      },
+      {
+        "field": "type",
+        "type": "text"
+      },
+      {
+        "field": "use",
+        "type": "text"
+      },
+      {
+        "field": "show",
+        "type": "number"
+      },
+      {
+        "field": "name_trim",
+        "type": "text"
+      },
+      {
+        "field": "sbif",
+        "type": "text"
+      },
+      {
+        "field": "comm_area",
+        "type": "text"
+      },
+      {
+        "field": "wards",
+        "type": "text"
+      },
+      {
+        "field": "repealed_d",
+        "type": "calendar_date"
+      },
+      {
+        "field": "approval_d",
+        "type": "calendar_date"
+      },
+      {
+        "field": "expiration",
+        "type": "calendar_date"
+      },
+      {
+        "field": "shape_leng",
+        "type": "number"
+      },
+      {
+        "field": "shape_area",
+        "type": "number"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": false,
+    "has_geometry": true,
+    "date_columns": [
+      "repealed_d",
+      "approval_d",
+      "expiration"
+    ],
+    "date_range": {
+      "column": "repealed_d",
+      "min": "",
+      "max": ""
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:01.067326+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "nm3d-wkdd",
+    "name": "Tax Increment Financing (TIF) Investment Committee Decisions - Historical",
+    "dataset_type": "table",
+    "description": "<b>The review process feeding this dataset was retired in 2024. The <a href=\"https://data.cityofchicago.org/d/39jp-wa43\" target=\"_blank\">Tax Increment Financing (TIF) Request Review</a> dataset contains similar data from the successor process.</b>\n\nThis data includes all projects reviewed by the TIF Investment Committee (TIC), from May 2019 through December 2024. TIC reviewed requests for the use Tax Increment Financing (TIF) funds \u2013 a special funding tool used by the City of Chicago to promote public and private investment across the city \u2013 for a variety of projects including public infrastru",
+    "rows_updated_at": "2025-01-29T16:47:29+00:00",
+    "row_count": 1698,
+    "columns": [
+      {
+        "field": "project",
+        "type": "text"
+      },
+      {
+        "field": "department",
+        "type": "text"
+      },
+      {
+        "field": "improvement_type",
+        "type": "text"
+      },
+      {
+        "field": "address",
+        "type": "text"
+      },
+      {
+        "field": "location_tif",
+        "type": "text"
+      },
+      {
+        "field": "location_tif_number",
+        "type": "text"
+      },
+      {
+        "field": "funding_tif",
+        "type": "text"
+      },
+      {
+        "field": "funding_tif_number",
+        "type": "text"
+      },
+      {
+        "field": "project_summary",
+        "type": "text"
+      },
+      {
+        "field": "tif_request",
+        "type": "number"
+      },
+      {
+        "field": "total_project_cost",
+        "type": "number"
+      },
+      {
+        "field": "percentage_of_tif",
+        "type": "number"
+      },
+      {
+        "field": "tic_meeting_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "tic_decision",
+        "type": "text"
+      },
+      {
+        "field": "location",
+        "type": "point"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": true,
+    "date_columns": [
+      "tic_meeting_date"
+    ],
+    "date_range": {
+      "column": "tic_meeting_date",
+      "min": "2019-07-09T00:00:00.000",
+      "max": "2024-12-17T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:02.418911+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "t68z-cikk",
+    "name": "ACS 5 Year Data by Community Area",
+    "dataset_type": "table",
+    "description": "Selected variables from the most recent ACS Community Survey (Released 2023) aggregated by Community Area.  Additional years will be added as they become available.\n\nThe underlying algorithm to create the dataset calculates the % of a census tract that falls within the boundaries of a given community area. Given that census tracts and community area boundaries are not aligned, these figures should be considered an estimate. \n\nTotal population in this dataset: 2,647,621\nTotal Chicago Population Per ACS 2023: 2,664,452\n% Difference: -0.632%\n\nThere are different approaches in common use for displ",
+    "rows_updated_at": "2025-01-23T16:10:00+00:00",
+    "row_count": 77,
+    "columns": [
+      {
+        "field": "acs_year",
+        "type": "number"
+      },
+      {
+        "field": "community_area",
+        "type": "text"
+      },
+      {
+        "field": "under_25_000",
+        "type": "number"
+      },
+      {
+        "field": "_25_000_to_49_999",
+        "type": "number"
+      },
+      {
+        "field": "_50_000_to_74_999",
+        "type": "number"
+      },
+      {
+        "field": "_75_000_to_125_000",
+        "type": "number"
+      },
+      {
+        "field": "_125_000",
+        "type": "number"
+      },
+      {
+        "field": "male_0_to_17",
+        "type": "number"
+      },
+      {
+        "field": "male_18_to_24",
+        "type": "number"
+      },
+      {
+        "field": "male_25_to_34",
+        "type": "number"
+      },
+      {
+        "field": "male_35_to_49",
+        "type": "number"
+      },
+      {
+        "field": "male_50_to_64",
+        "type": "number"
+      },
+      {
+        "field": "male_65",
+        "type": "number"
+      },
+      {
+        "field": "female_0_to_17",
+        "type": "number"
+      },
+      {
+        "field": "female_18_to_24",
+        "type": "number"
+      },
+      {
+        "field": "female_25_to_34",
+        "type": "number"
+      },
+      {
+        "field": "female_35_to_49",
+        "type": "number"
+      },
+      {
+        "field": "female_50_to_64",
+        "type": "number"
+      },
+      {
+        "field": "female_65",
+        "type": "number"
+      },
+      {
+        "field": "total_population",
+        "type": "number"
+      },
+      {
+        "field": "white",
+        "type": "number"
+      },
+      {
+        "field": "black_or_african_american",
+        "type": "number"
+      },
+      {
+        "field": "american_indian_or_alaska",
+        "type": "number"
+      },
+      {
+        "field": "asian",
+        "type": "number"
+      },
+      {
+        "field": "native_hawaiin_or_pacific",
+        "type": "number"
+      },
+      {
+        "field": "other_race",
+        "type": "number"
+      },
+      {
+        "field": "multiracial",
+        "type": "number"
+      },
+      {
+        "field": "white_not_hispanic_or_latino",
+        "type": "number"
+      },
+      {
+        "field": "hispanic_or_latino",
+        "type": "number"
+      },
+      {
+        "field": "record_id",
+        "type": "text"
+      }
+    ],
+    "has_coordinates": false,
+    "has_ward_field": false,
+    "has_community_area_field": true,
+    "has_geometry": false,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:03.521609+00:00",
+    "ward20_clip_capability": "community-area field only \u2014 cannot be clipped to the ward"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "kn9c-c2s2",
+    "name": "Census Data - Selected socioeconomic indicators in Chicago, 2008 \u2013 2012",
+    "dataset_type": "table",
+    "description": "This dataset contains a selection of six socioeconomic indicators of public health significance and a \u201chardship index,\u201d by Chicago community area, for the years 2008 \u2013 2012. The indicators are the percent of occupied housing units with more than one person per room (i.e., crowded housing); the percent of households living below the federal poverty level; the percent of persons in the labor force over the age of 16 years that are unemployed; the percent of persons over the age of 25 years without a high school diploma; the percent of the population under 18 or over 64 years of age (i.e., depend",
+    "rows_updated_at": "2014-09-12T20:53:38+00:00",
+    "row_count": 78,
+    "columns": [
+      {
+        "field": "ca",
+        "type": "number"
+      },
+      {
+        "field": "community_area_name",
+        "type": "text"
+      },
+      {
+        "field": "percent_of_housing_crowded",
+        "type": "number"
+      },
+      {
+        "field": "percent_households_below_poverty",
+        "type": "number"
+      },
+      {
+        "field": "percent_aged_16_unemployed",
+        "type": "number"
+      },
+      {
+        "field": "percent_aged_25_without_high_school_diploma",
+        "type": "number"
+      },
+      {
+        "field": "percent_aged_under_18_or_over_64",
+        "type": "number"
+      },
+      {
+        "field": "per_capita_income_",
+        "type": "number"
+      },
+      {
+        "field": "hardship_index",
+        "type": "number"
+      }
+    ],
+    "has_coordinates": false,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:04.174929+00:00",
+    "ward20_clip_capability": "no geographic field \u2014 administrative attribution only"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "aksk-kvfp",
+    "name": "City-Owned Land Inventory",
+    "dataset_type": "table",
+    "description": "<b> Note, 8/14/2026:</b> We have <a href=\"https://data.cityofchicago.org/stories/s/w3nh-8wdu\" target=\"_blank\">added</a> Times Listed and Last Listed columns. -- Property currently or historically owned and managed by the City of Chicago. Information provided in the database, or on the City\u2019s website generally, should not be used as a substitute for title research, title evidence, title insurance, real estate tax exemption or payment status, environmental or geotechnical due diligence, or as a substitute for legal, accounting, real estate, business, tax or other professional advice. The City as",
+    "rows_updated_at": "2026-09-13T23:03:44+00:00",
+    "row_count": 20770,
+    "columns": [
+      {
+        "field": "id",
+        "type": "text"
+      },
+      {
+        "field": "pin",
+        "type": "text"
+      },
+      {
+        "field": "address",
+        "type": "text"
+      },
+      {
+        "field": "managing_organization",
+        "type": "text"
+      },
+      {
+        "field": "property_status",
+        "type": "text"
+      },
+      {
+        "field": "date_of_acquisition",
+        "type": "calendar_date"
+      },
+      {
+        "field": "date_of_disposition",
+        "type": "calendar_date"
+      },
+      {
+        "field": "times_listed",
+        "type": "number"
+      },
+      {
+        "field": "last_listed",
+        "type": "calendar_date"
+      },
+      {
+        "field": "sales_status",
+        "type": "text"
+      },
+      {
+        "field": "sale_offering_status",
+        "type": "text"
+      },
+      {
+        "field": "sale_offering_reason",
+        "type": "text"
+      },
+      {
+        "field": "sq_ft",
+        "type": "number"
+      },
+      {
+        "field": "square_footage_city_estimate",
+        "type": "number"
+      },
+      {
+        "field": "land_value",
+        "type": "number"
+      },
+      {
+        "field": "ward",
+        "type": "number"
+      },
+      {
+        "field": "community_area_number",
+        "type": "text"
+      },
+      {
+        "field": "community_area_name",
+        "type": "text"
+      },
+      {
+        "field": "zoning_classification",
+        "type": "text"
+      },
+      {
+        "field": "zip_code",
+        "type": "text"
+      },
+      {
+        "field": "last_update",
+        "type": "text"
+      },
+      {
+        "field": "application_use",
+        "type": "text"
+      },
+      {
+        "field": "grouped_parcels",
+        "type": "text"
+      },
+      {
+        "field": "application_opens",
+        "type": "calendar_date"
+      },
+      {
+        "field": "application_deadline",
+        "type": "calendar_date"
+      },
+      {
+        "field": "offer_round",
+        "type": "text"
+      },
+      {
+        "field": "application_url",
+        "type": "url"
+      },
+      {
+        "field": "x_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "y_coordinate",
+        "type": "number"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "location"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [
+      "date_of_acquisition",
+      "date_of_disposition",
+      "last_listed",
+      "application_opens",
+      "application_deadline"
+    ],
+    "date_range": {
+      "column": "date_of_acquisition",
+      "min": "1872-12-11T00:00:00.000",
+      "max": "2029-03-12T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:04.744937+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "kc9i-wq85",
+    "name": "Vacant and Abandoned Buildings - Violations",
+    "dataset_type": "table",
+    "description": "NOTE, 6/28/2021: There are changes and correction in this dataset. See https://data.cityofchicago.org/stories/s/Vacant-and-Abandoned-Buildings-Violations-Correcti/ezdy-f2qs for details. -- Vacant and abandoned building violations issued on properties owned by financial institutions since January 1, 2011. Each violation is tied to a Docket Number. A Docket may have more than one violation associated with it. Fees are assessed based on all violations associated with a particular Docket. This dataset displays the most recent action (disposition description) for each violation, the fees and fines ",
+    "rows_updated_at": "2025-10-08T12:17:08+00:00",
+    "row_count": 5012,
+    "columns": [
+      {
+        "field": "docket_number",
+        "type": "text"
+      },
+      {
+        "field": "violation_number",
+        "type": "text"
+      },
+      {
+        "field": "issued_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "issuing_department",
+        "type": "text"
+      },
+      {
+        "field": "last_hearing_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "property_address",
+        "type": "text"
+      },
+      {
+        "field": "violation_type",
+        "type": "text"
+      },
+      {
+        "field": "entity_or_person_s_",
+        "type": "text"
+      },
+      {
+        "field": "disposition_description",
+        "type": "text"
+      },
+      {
+        "field": "total_fines",
+        "type": "number"
+      },
+      {
+        "field": "total_administrative_costs",
+        "type": "number"
+      },
+      {
+        "field": "interest_amount",
+        "type": "number"
+      },
+      {
+        "field": "collection_costs_or_attorney_fees",
+        "type": "number"
+      },
+      {
+        "field": "court_cost",
+        "type": "number"
+      },
+      {
+        "field": "original_total_amount_due",
+        "type": "number"
+      },
+      {
+        "field": "total_paid",
+        "type": "number"
+      },
+      {
+        "field": "current_amount_due",
+        "type": "number"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "point"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": true,
+    "date_columns": [
+      "issued_date",
+      "last_hearing_date"
+    ],
+    "date_range": {
+      "column": "issued_date",
+      "min": "2001-01-01T00:00:00.000",
+      "max": "2025-08-21T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:06.091864+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "22u3-xenr",
+    "name": "Building Violations",
+    "dataset_type": "table",
+    "description": "Violations issued by the Department of Buildings from 2006 to the present.  Lenders and title companies, please note: These data are historical in nature and should not be relied upon for real estate transactions. For transactional purposes such as closings, please consult the title commitment for outstanding enforcement actions in the Circuit Court of Cook County or the Chicago Department of Administrative Hearings. Violations are always associated to an inspection and there can be multiple violation records to one inspection record. Related Applications: Building Data Warehouse http://www.ci",
+    "rows_updated_at": "2026-09-12T07:17:51+00:00",
+    "row_count": 2027808,
+    "columns": [
+      {
+        "field": "id",
+        "type": "text"
+      },
+      {
+        "field": "violation_last_modified_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "violation_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "violation_code",
+        "type": "text"
+      },
+      {
+        "field": "violation_status",
+        "type": "text"
+      },
+      {
+        "field": "violation_status_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "violation_description",
+        "type": "text"
+      },
+      {
+        "field": "violation_location",
+        "type": "text"
+      },
+      {
+        "field": "violation_inspector_comments",
+        "type": "text"
+      },
+      {
+        "field": "violation_ordinance",
+        "type": "text"
+      },
+      {
+        "field": "inspector_id",
+        "type": "text"
+      },
+      {
+        "field": "inspection_number",
+        "type": "number"
+      },
+      {
+        "field": "inspection_status",
+        "type": "text"
+      },
+      {
+        "field": "inspection_waived",
+        "type": "text"
+      },
+      {
+        "field": "inspection_category",
+        "type": "text"
+      },
+      {
+        "field": "department_bureau",
+        "type": "text"
+      },
+      {
+        "field": "address",
+        "type": "text"
+      },
+      {
+        "field": "street_number",
+        "type": "number"
+      },
+      {
+        "field": "street_direction",
+        "type": "text"
+      },
+      {
+        "field": "street_name",
+        "type": "text"
+      },
+      {
+        "field": "street_type",
+        "type": "text"
+      },
+      {
+        "field": "property_group",
+        "type": "number"
+      },
+      {
+        "field": "ssa",
+        "type": "text"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "location"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [
+      "violation_last_modified_date",
+      "violation_date",
+      "violation_status_date"
+    ],
+    "date_range": {
+      "column": "violation_last_modified_date",
+      "min": "2002-10-31T18:25:24.000",
+      "max": "2026-09-11T15:23:38.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:07.679172+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "ydr8-5enu",
+    "name": "Building Permits",
+    "dataset_type": "table",
+    "description": "This dataset includes information about building permits issued by the City of Chicago from 2006 to the present, excluding permits that have been voided or revoked after issuance. Most types of permits are issued subject to payment of the applicable permit fee. Work under a permit may not begin until the applicable permit fee is paid. \n\nFor more information about building permits, see http://www.chicago.gov/permit.",
+    "rows_updated_at": "2026-09-14T12:38:15+00:00",
+    "row_count": 847141,
+    "columns": [
+      {
+        "field": "id",
+        "type": "text"
+      },
+      {
+        "field": "permit_",
+        "type": "text"
+      },
+      {
+        "field": "permit_status",
+        "type": "text"
+      },
+      {
+        "field": "permit_milestone",
+        "type": "text"
+      },
+      {
+        "field": "permit_type",
+        "type": "text"
+      },
+      {
+        "field": "review_type",
+        "type": "text"
+      },
+      {
+        "field": "application_start_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "issue_date",
+        "type": "calendar_date"
+      },
+      {
+        "field": "processing_time",
+        "type": "number"
+      },
+      {
+        "field": "street_number",
+        "type": "number"
+      },
+      {
+        "field": "street_direction",
+        "type": "text"
+      },
+      {
+        "field": "street_name",
+        "type": "text"
+      },
+      {
+        "field": "work_type",
+        "type": "text"
+      },
+      {
+        "field": "work_description",
+        "type": "text"
+      },
+      {
+        "field": "permit_condition",
+        "type": "text"
+      },
+      {
+        "field": "building_fee_paid",
+        "type": "number"
+      },
+      {
+        "field": "zoning_fee_paid",
+        "type": "number"
+      },
+      {
+        "field": "other_fee_paid",
+        "type": "number"
+      },
+      {
+        "field": "subtotal_paid",
+        "type": "number"
+      },
+      {
+        "field": "building_fee_unpaid",
+        "type": "number"
+      },
+      {
+        "field": "zoning_fee_unpaid",
+        "type": "number"
+      },
+      {
+        "field": "other_fee_unpaid",
+        "type": "number"
+      },
+      {
+        "field": "subtotal_unpaid",
+        "type": "number"
+      },
+      {
+        "field": "building_fee_waived",
+        "type": "number"
+      },
+      {
+        "field": "building_fee_subtotal",
+        "type": "number"
+      },
+      {
+        "field": "zoning_fee_subtotal",
+        "type": "number"
+      },
+      {
+        "field": "other_fee_subtotal",
+        "type": "number"
+      },
+      {
+        "field": "zoning_fee_waived",
+        "type": "number"
+      },
+      {
+        "field": "other_fee_waived",
+        "type": "number"
+      },
+      {
+        "field": "subtotal_waived",
+        "type": "number"
+      },
+      {
+        "field": "total_fee",
+        "type": "number"
+      },
+      {
+        "field": "contact_1_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_1_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_1_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_1_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_1_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_2_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_2_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_2_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_2_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_2_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_3_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_3_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_3_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_3_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_3_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_4_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_4_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_4_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_4_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_4_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_5_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_5_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_5_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_5_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_5_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_6_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_6_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_6_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_6_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_6_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_7_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_7_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_7_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_7_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_7_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_8_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_8_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_8_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_8_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_8_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_9_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_9_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_9_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_9_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_9_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_10_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_10_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_10_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_10_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_10_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_11_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_11_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_11_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_11_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_11_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_12_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_12_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_12_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_12_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_12_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_13_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_13_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_13_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_13_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_13_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_14_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_14_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_14_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_14_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_14_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "contact_15_type",
+        "type": "text"
+      },
+      {
+        "field": "contact_15_name",
+        "type": "text"
+      },
+      {
+        "field": "contact_15_city",
+        "type": "text"
+      },
+      {
+        "field": "contact_15_state",
+        "type": "text"
+      },
+      {
+        "field": "contact_15_zipcode",
+        "type": "text"
+      },
+      {
+        "field": "reported_cost",
+        "type": "number"
+      },
+      {
+        "field": "pin_list",
+        "type": "text"
+      },
+      {
+        "field": "community_area",
+        "type": "number"
+      },
+      {
+        "field": "census_tract",
+        "type": "number"
+      },
+      {
+        "field": "ward",
+        "type": "number"
+      },
+      {
+        "field": "xcoordinate",
+        "type": "number"
+      },
+      {
+        "field": "ycoordinate",
+        "type": "number"
+      },
+      {
+        "field": "latitude",
+        "type": "number"
+      },
+      {
+        "field": "longitude",
+        "type": "number"
+      },
+      {
+        "field": "location",
+        "type": "point"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": true,
+    "has_community_area_field": true,
+    "has_geometry": true,
+    "date_columns": [
+      "application_start_date",
+      "issue_date"
+    ],
+    "date_range": {
+      "column": "application_start_date",
+      "min": "2000-10-06T00:00:00.000",
+      "max": "2026-09-13T00:00:00.000"
+    },
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:11.298571+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "6imu-meau",
+    "name": "Street Center Lines",
+    "dataset_type": "visualization_canvas_map",
+    "description": "Street center lines in Chicago. The data can be viewed on the Chicago Data Portal with a web browser. However, to view or use the files outside of a web browser, you will need to use compression software and special GIS software, such as ESRI ArcGIS (shapefile) or Google Earth (KML or KMZ), is required.",
+    "rows_updated_at": "2021-06-11T21:55:49+00:00",
+    "row_count": 56338,
+    "columns": [],
+    "has_coordinates": false,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:12.297876+00:00",
+    "ward20_clip_capability": "no geographic field \u2014 administrative attribution only"
+  },
+  {
+    "domain": "data.cityofchicago.org",
+    "dataset_id": "cmr6-dn8c",
+    "name": "Boundaries - Special Service Areas",
+    "dataset_type": "table",
+    "description": "Special Service Areas (SSA) boundaries in Chicago. The Special Service Area program is a mechanism used to fund expanded services and programs through a localized property tax levy within contiguous industrial, commercial and residential areas. The enhanced services and programs are in addition to services and programs currently provided through the city. SSA-funded projects could include, but are not limited to, security services, area marketing and advertising assistance, promotional activities such as parades and festivals, or any variety of small scale capital improvements that could be su",
+    "rows_updated_at": "2025-12-08T19:38:21+00:00",
+    "row_count": 58,
+    "columns": [
+      {
+        "field": "the_geom",
+        "type": "multipolygon"
+      },
+      {
+        "field": "objectid_1",
+        "type": "number"
+      },
+      {
+        "field": "fid_1",
+        "type": "number"
+      },
+      {
+        "field": "objectid_2",
+        "type": "number"
+      },
+      {
+        "field": "objectid_3",
+        "type": "number"
+      },
+      {
+        "field": "objectid_4",
+        "type": "number"
+      },
+      {
+        "field": "objectid",
+        "type": "number"
+      },
+      {
+        "field": "ref_no",
+        "type": "text"
+      },
+      {
+        "field": "name",
+        "type": "text"
+      },
+      {
+        "field": "status",
+        "type": "text"
+      },
+      {
+        "field": "comm_area",
+        "type": "text"
+      },
+      {
+        "field": "shape_leng",
+        "type": "number"
+      },
+      {
+        "field": "shape_le_1",
+        "type": "number"
+      },
+      {
+        "field": "shape_le_2",
+        "type": "number"
+      },
+      {
+        "field": "ward_2023",
+        "type": "text"
+      },
+      {
+        "field": "shape_le_3",
+        "type": "number"
+      },
+      {
+        "field": "shape_area",
+        "type": "number"
+      }
+    ],
+    "has_coordinates": true,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": true,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:13.723942+00:00",
+    "ward20_clip_capability": "point-in-polygon on coordinates (current footprint + community-area portions)"
+  },
+  {
+    "domain": "datacatalog.cookcountyil.gov",
+    "dataset_id": "pabr-t5kh",
+    "name": "Assessor - Parcel Universe (Current Year Only)",
+    "dataset_type": "table",
+    "description": "A <i><b>current-year-only</b></i> universe of Cook County parcels with attached geographic, governmental, and spatial data.\n\nWhen working with Parcel Index Numbers (PINs) make sure to zero-pad them to 14 digits. Some datasets may lose leading zeros for PINs when downloaded.\n\nAdditional notes:<ul><li>Non-taxing district data is attached via spatial join (st_contains) to each parcel's centroid.</li>\n<li>Tax district data (school district, park district, municipality, etc.) are attached by a parcel's assigned tax code.</li>\n<li>Centroids are based on <a href=\"https://datacatalog.cookcountyil.gov/",
+    "rows_updated_at": "2026-09-01T13:53:32+00:00",
+    "row_count": 1863665,
+    "columns": [
+      {
+        "field": "pin",
+        "type": "text"
+      },
+      {
+        "field": "pin10",
+        "type": "text"
+      },
+      {
+        "field": "year",
+        "type": "number"
+      },
+      {
+        "field": "class",
+        "type": "text"
+      },
+      {
+        "field": "triad_name",
+        "type": "text"
+      },
+      {
+        "field": "triad_code",
+        "type": "text"
+      },
+      {
+        "field": "township_name",
+        "type": "text"
+      },
+      {
+        "field": "township_code",
+        "type": "text"
+      },
+      {
+        "field": "nbhd_code",
+        "type": "text"
+      },
+      {
+        "field": "tax_code",
+        "type": "text"
+      },
+      {
+        "field": "zip_code",
+        "type": "text"
+      },
+      {
+        "field": "lon",
+        "type": "number"
+      },
+      {
+        "field": "lat",
+        "type": "number"
+      },
+      {
+        "field": "x_3435",
+        "type": "number"
+      },
+      {
+        "field": "y_3435",
+        "type": "number"
+      },
+      {
+        "field": "census_block_group_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_block_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_congressional_district_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_congressional_district_num",
+        "type": "text"
+      },
+      {
+        "field": "census_county_subdivision_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_place_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_puma_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_school_district_elementary_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_school_district_secondary_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_school_district_unified_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_state_representative_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_state_representative_num",
+        "type": "text"
+      },
+      {
+        "field": "census_state_senate_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_state_senate_num",
+        "type": "text"
+      },
+      {
+        "field": "census_tract_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_zcta_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_data_year",
+        "type": "number"
+      },
+      {
+        "field": "census_acs5_congressional_district_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_congressional_district_num",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_county_subdivision_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_place_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_puma_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_school_district_elementary_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_school_district_secondary_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_school_district_unified_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_state_representative_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_state_representative_num",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_state_senate_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_state_senate_num",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_tract_geoid",
+        "type": "text"
+      },
+      {
+        "field": "census_acs5_data_year",
+        "type": "number"
+      },
+      {
+        "field": "cook_board_of_review_district_num",
+        "type": "text"
+      },
+      {
+        "field": "cook_board_of_review_district_data_year",
+        "type": "number"
+      },
+      {
+        "field": "cook_commissioner_district_num",
+        "type": "text"
+      },
+      {
+        "field": "cook_commissioner_district_data_year",
+        "type": "number"
+      },
+      {
+        "field": "cook_judicial_district_num",
+        "type": "text"
+      },
+      {
+        "field": "cook_judicial_district_data_year",
+        "type": "number"
+      },
+      {
+        "field": "cook_municipality_num",
+        "type": "text"
+      },
+      {
+        "field": "cook_municipality_name",
+        "type": "text"
+      },
+      {
+        "field": "cook_municipality_data_year",
+        "type": "number"
+      },
+      {
+        "field": "ward_num",
+        "type": "text"
+      },
+      {
+        "field": "ward_chicago_data_year",
+        "type": "number"
+      },
+      {
+        "field": "ward_evanston_data_year",
+        "type": "number"
+      },
+      {
+        "field": "chicago_community_area_num",
+        "type": "text"
+      },
+      {
+        "field": "chicago_community_area_name",
+        "type": "text"
+      },
+      {
+        "field": "chicago_community_area_data_year",
+        "type": "number"
+      },
+      {
+        "field": "chicago_industrial_corridor_num",
+        "type": "text"
+      },
+      {
+        "field": "chicago_industrial_corridor_name",
+        "type": "text"
+      },
+      {
+        "field": "chicago_industrial_corridor_data_year",
+        "type": "number"
+      },
+      {
+        "field": "chicago_police_district_num",
+        "type": "text"
+      },
+      {
+        "field": "chicago_police_district_data_year",
+        "type": "number"
+      },
+      {
+        "field": "econ_coordinated_care_area_num",
+        "type": "text"
+      },
+      {
+        "field": "econ_coordinated_care_area_data_year",
+        "type": "number"
+      },
+      {
+        "field": "econ_enterprise_zone_num",
+        "type": "text"
+      },
+      {
+        "field": "econ_enterprise_zone_data_year",
+        "type": "number"
+      },
+      {
+        "field": "econ_industrial_growth_zone_num",
+        "type": "text"
+      },
+      {
+        "field": "econ_industrial_growth_zone_data_year",
+        "type": "number"
+      },
+      {
+        "field": "econ_qualified_opportunity_zone_num",
+        "type": "text"
+      },
+      {
+        "field": "econ_qualified_opportunity_zone_data_year",
+        "type": "number"
+      },
+      {
+        "field": "econ_central_business_district_num",
+        "type": "text"
+      },
+      {
+        "field": "econ_central_business_district_data_year",
+        "type": "number"
+      },
+      {
+        "field": "env_flood_fema_sfha",
+        "type": "checkbox"
+      },
+      {
+        "field": "env_flood_fema_data_year",
+        "type": "number"
+      },
+      {
+        "field": "env_flood_fs_factor",
+        "type": "number"
+      },
+      {
+        "field": "env_flood_fs_risk_direction",
+        "type": "number"
+      },
+      {
+        "field": "env_flood_fs_data_year",
+        "type": "number"
+      },
+      {
+        "field": "env_ohare_noise_contour_no_buffer_bool",
+        "type": "checkbox"
+      },
+      {
+        "field": "env_ohare_noise_contour_half_mile_buffer_bool",
+        "type": "checkbox"
+      },
+      {
+        "field": "env_ohare_noise_contour_data_year",
+        "type": "number"
+      },
+      {
+        "field": "env_airport_noise_dnl",
+        "type": "number"
+      },
+      {
+        "field": "env_airport_noise_data_year",
+        "type": "text"
+      },
+      {
+        "field": "school_elementary_district_geoid",
+        "type": "text"
+      },
+      {
+        "field": "school_elementary_district_name",
+        "type": "text"
+      },
+      {
+        "field": "school_secondary_district_geoid",
+        "type": "text"
+      },
+      {
+        "field": "school_secondary_district_name",
+        "type": "text"
+      },
+      {
+        "field": "school_unified_district_geoid",
+        "type": "text"
+      },
+      {
+        "field": "school_unified_district_name",
+        "type": "text"
+      },
+      {
+        "field": "school_school_year",
+        "type": "text"
+      },
+      {
+        "field": "school_data_year",
+        "type": "number"
+      },
+      {
+        "field": "tax_municipality_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_municipality_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_school_elementary_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_school_elementary_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_school_secondary_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_school_secondary_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_school_unified_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_school_unified_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_community_college_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_community_college_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_fire_protection_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_fire_protection_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_library_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_library_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_park_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_park_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_sanitation_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_sanitation_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_special_service_area_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_special_service_area_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_tif_district_num",
+        "type": "text"
+      },
+      {
+        "field": "tax_tif_district_name",
+        "type": "text"
+      },
+      {
+        "field": "tax_data_year",
+        "type": "number"
+      },
+      {
+        "field": "access_cmap_walk_id",
+        "type": "text"
+      },
+      {
+        "field": "access_cmap_walk_nta_score",
+        "type": "number"
+      },
+      {
+        "field": "access_cmap_walk_total_score",
+        "type": "number"
+      },
+      {
+        "field": "access_cmap_walk_data_year",
+        "type": "number"
+      },
+      {
+        "field": "misc_subdivision_id",
+        "type": "text"
+      },
+      {
+        "field": "misc_subdivision_data_year",
+        "type": "number"
+      },
+      {
+        "field": "row_id",
+        "type": "text"
+      }
+    ],
+    "has_coordinates": false,
+    "has_ward_field": false,
+    "has_community_area_field": false,
+    "has_geometry": false,
+    "date_columns": [],
+    "date_range": {},
+    "error": "",
+    "retrieved_at": "2026-09-14T18:40:14.158597+00:00",
+    "ward20_clip_capability": "no geographic field \u2014 administrative attribution only"
+  }
+]

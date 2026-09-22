@@ -1,12 +1,13 @@
-"""Individual Woodlawn incidents, read from the real Bronze + Silver parquet files.
+"""Individual incidents for one product geography, read from the real Bronze + Silver files.
 
 Read-only. Silver supplies the spatial assignment; Bronze supplies the incident's published
 fields; they are joined on the source incident `id`. Nothing is written, and no value is
 derived, imputed, or invented — every field is either what the city published or what
 point-in-polygon determined.
 
-Only records whose coordinates fall inside the official Woodlawn boundary are returned:
-the filter is `neighborhood_woodlawn`, never the city's reported `community_area`.
+Only records whose coordinates fall inside the requested geography (Ward 20, or the part of
+an area inside Ward 20) are returned. The place filter lives in `presentation.geography`,
+never in the city's reported `ward` / `community_area` fields.
 
 Filtering, sorting, and pagination all happen here (server-side), so the browser never has
 to download a whole year to page or sort through it.
@@ -21,12 +22,13 @@ from typing import Any
 
 import pandas as pd
 
+from bw_observatory.presentation.geography import ProductGeography, load_geography_registry
 from bw_observatory.presentation.models import IncidentPage, IncidentRecord
 from bw_observatory.presentation.overview import (
-    OverviewDataUnavailable,
     broad_category_of,
     bronze_path,
-    silver_path,
+    load_geography_rows,
+    resolve_geography,
 )
 
 DEFAULT_PAGE_SIZE = 25
@@ -115,24 +117,14 @@ def _number(value: Any) -> float | None:
         return None
 
 
-def load_woodlawn_incidents(data_dir: Path, year: int) -> pd.DataFrame:
-    """Every Woodlawn incident for a year, newest first. Raises if the year has no data."""
-    silver = silver_path(data_dir, year)
-    bronze = bronze_path(data_dir, year)
+def load_geography_incidents(
+    data_dir: Path, year: int, geography: ProductGeography
+) -> pd.DataFrame:
+    """Every incident inside one geography for a year. Raises if the year has no data."""
+    inside = load_geography_rows(data_dir, year, geography, extra_columns=("geography_status",))
 
-    if not silver.exists():
-        raise OverviewDataUnavailable(
-            f"No geography-enriched crime data for {year}. Run "
-            f"scripts/enrich_crime_geography.py --year {year}."
-        )
-    if not bronze.exists():
-        raise OverviewDataUnavailable(f"No Bronze crime data for {year}.")
-
-    enriched = pd.read_parquet(silver, columns=["id", "neighborhood_woodlawn", "geography_status"])
-    woodlawn = enriched[enriched["neighborhood_woodlawn"] == True]  # noqa: E712
-
-    attributes = pd.read_parquet(bronze, columns=BRONZE_FIELDS)
-    joined = woodlawn.merge(attributes, on="id", how="left")
+    attributes = pd.read_parquet(bronze_path(data_dir, year), columns=BRONZE_FIELDS)
+    joined = inside.merge(attributes, on="id", how="left")
 
     joined["_when"] = pd.to_datetime(joined["date"], errors="coerce")
     # The broad, resident-facing category for each record — used by the broad_category filter.
@@ -240,6 +232,7 @@ def to_record(row: pd.Series) -> IncidentRecord:
 def _filtered_and_sorted(
     data_dir: Path,
     year: int,
+    geography: ProductGeography,
     *,
     primary_type: str | None,
     broad_category: str | None,
@@ -256,7 +249,7 @@ def _filtered_and_sorted(
     sort_by: str,
     sort_dir: str,
 ) -> pd.DataFrame:
-    incidents = load_woodlawn_incidents(data_dir, year)
+    incidents = load_geography_incidents(data_dir, year, geography)
     filtered = apply_filters(
         incidents,
         primary_type=primary_type,
@@ -295,16 +288,18 @@ def build_incident_page(
     search: str | None = None,
     sort_by: str = "date",
     sort_dir: str = "desc",
-    neighborhood_id: str = "woodlawn",
+    neighborhood_id: str | None = None,
 ) -> IncidentPage:
     if page < 1:
         raise ValueError("page must be 1 or greater")
     if page_size < 1 or page_size > MAX_PAGE_SIZE:
         raise ValueError(f"page_size must be between 1 and {MAX_PAGE_SIZE}")
 
+    geography = resolve_geography(neighborhood_id or load_geography_registry().default_id)
     ordered = _filtered_and_sorted(
         data_dir,
         year,
+        geography,
         primary_type=primary_type,
         broad_category=broad_category,
         block=block,
@@ -327,7 +322,7 @@ def build_incident_page(
     window = ordered.iloc[start : start + page_size]
 
     return IncidentPage(
-        neighborhood_id=neighborhood_id,
+        neighborhood_id=geography.geography_id,
         year=year,
         total_records=total,
         page=page,
@@ -355,11 +350,14 @@ def build_incident_csv(
     search: str | None = None,
     sort_by: str = "date",
     sort_dir: str = "desc",
+    neighborhood_id: str | None = None,
 ) -> str:
     """The full filtered/sorted result set as CSV — masked block-level, exactly as published."""
+    geography = resolve_geography(neighborhood_id or load_geography_registry().default_id)
     ordered = _filtered_and_sorted(
         data_dir,
         year,
+        geography,
         primary_type=primary_type,
         broad_category=broad_category,
         block=block,

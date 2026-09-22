@@ -22,7 +22,7 @@ from bw_observatory.presentation.overview import (
 
 
 def bronze_rows() -> list[dict[str, Any]]:
-    """Six Woodlawn incidents plus two that are not in Woodlawn."""
+    """Six incidents in Woodlawn-within-Ward-20, plus two outside Ward 20."""
     return [
         {"id": "1", "primary_type": "BATTERY", "date": "2024-01-15T10:00:00.000"},
         {"id": "2", "primary_type": "ROBBERY", "date": "2024-01-20T10:00:00.000"},
@@ -30,24 +30,28 @@ def bronze_rows() -> list[dict[str, Any]]:
         {"id": "4", "primary_type": "BURGLARY", "date": "2024-07-04T10:00:00.000"},
         {"id": "5", "primary_type": "THEFT", "date": "2024-12-31T10:00:00.000"},
         {"id": "6", "primary_type": "NARCOTICS", "date": "2024-07-05T10:00:00.000"},
-        {"id": "7", "primary_type": "BATTERY", "date": "2024-05-05T10:00:00.000"},  # not Woodlawn
-        {"id": "8", "primary_type": "THEFT", "date": "2024-05-06T10:00:00.000"},  # not Woodlawn
+        {"id": "7", "primary_type": "BATTERY", "date": "2024-05-05T10:00:00.000"},  # outside ward
+        {"id": "8", "primary_type": "THEFT", "date": "2024-05-06T10:00:00.000"},  # outside ward
     ]
 
 
 def silver_rows() -> list[dict[str, Any]]:
-    woodlawn = [True] * 6 + [False, False]
+    """Rows 1-6 are in Woodlawn AND in Ward 20. Row 7 is in the Woodlawn community area but
+    outside Ward 20 (Ward 5) — the product must not count it. Row 8 is outside both."""
+    in_ward = [True] * 6 + [False, False]
     rows = []
-    for index, flag in enumerate(woodlawn, start=1):
+    for index, flag in enumerate(in_ward, start=1):
         rows.append(
             {
                 "id": str(index),
                 "source_year": 2024,
-                # A source community_area that disagrees with the polygon: filtering must use
-                # the spatial flag, not this.
+                # Source fields that disagree with the polygons: filtering must use the
+                # spatial columns, never these.
                 "source_community_area": "42" if index != 7 else "99",
-                "spatial_community_area": "42" if flag else "43",
-                "neighborhood_woodlawn": flag,
+                "source_ward": "20",
+                "spatial_ward_current": "20" if flag else "5",
+                "spatial_community_area": "42" if index != 8 else "43",
+                "neighborhood_woodlawn": index != 8,
                 "neighborhood_bronzeville": None,
                 "geography_status": "assigned",
                 "community_area_mismatch": False,
@@ -147,23 +151,37 @@ def test_categories_do_not_sum_to_the_total(data_dir: Path) -> None:
 # -- Woodlawn filtering ----------------------------------------------------------------
 
 
-def test_woodlawn_filtering_uses_the_spatial_flag(data_dir: Path) -> None:
-    """Filtering must use point-in-polygon, not the city's reported community_area."""
+def test_filtering_uses_the_spatial_assignment(data_dir: Path) -> None:
+    """Filtering must use point-in-polygon, not the city's reported ward/community_area."""
+    ward = build_overview(data_dir, 2024)
+    woodlawn = build_overview(data_dir, 2024, "woodlawn")
+
+    # Every source_ward says 20, but only rows 1-6 are spatially inside Ward 20. Row 7 is in
+    # the Woodlawn community area yet outside the ward, so it counts for neither.
+    assert ward.total_incidents == 6
+    assert woodlawn.total_incidents == 6
+
+
+def test_default_geography_is_the_whole_ward(data_dir: Path) -> None:
     response = build_overview(data_dir, 2024)
 
-    # Record 7 is NOT in Woodlawn spatially, though its source community_area says 99 and
-    # records 1-6 are. Only the six spatially-assigned records count.
-    assert response.total_incidents == 6
+    assert response.neighborhood_id == "ward20"
+    assert response.neighborhood_name == "Ward 20"
+    assert response.provenance.boundary_type == "ward"
+    assert response.provenance.ward_vintage == "2023"
+    assert "all of Ward 20" in response.provenance.geography_scope
 
 
-def test_endpoint_returns_real_woodlawn_data(data_dir: Path) -> None:
-    response = build_overview(data_dir, 2024)
+def test_endpoint_returns_real_woodlawn_within_ward_data(data_dir: Path) -> None:
+    response = build_overview(data_dir, 2024, "woodlawn")
 
     assert response.neighborhood_id == "woodlawn"
     assert response.neighborhood_name == "Woodlawn"
     assert response.year == 2024
     assert response.provenance.source_dataset_id == "ijzp-q8t2"
-    assert response.provenance.boundary_type == "official_community_area"
+    assert response.provenance.boundary_type == "community_area_portion"
+    assert "community area 42" in response.provenance.boundary_source
+    assert "inside the current Ward 20 footprint" in response.provenance.geography_scope
     assert response.provenance.data_through == "2024-12-31"
     assert response.provenance.last_refresh == "2026-07-11"
 
@@ -209,19 +227,30 @@ def test_headline_makes_no_directional_claim_without_a_comparison(data_dir: Path
 # -- Bronzeville -----------------------------------------------------------------------
 
 
-def test_bronzeville_is_never_fabricated(data_dir: Path) -> None:
-    with pytest.raises(OverviewDataUnavailable, match="Boundary pending approval"):
-        build_overview(data_dir, 2024, "bronzeville")
+def test_pending_neighborhood_is_never_fabricated(data_dir: Path) -> None:
+    with pytest.raises(OverviewDataUnavailable, match="not an official community area"):
+        build_overview(data_dir, 2024, "back-of-the-yards")
 
 
-def test_bronzeville_is_reported_unavailable_not_zero(data_dir: Path) -> None:
+def test_pending_neighborhood_is_reported_unavailable_not_zero(data_dir: Path) -> None:
     response = build_overview(data_dir, 2024)
-    bronzeville = next(n for n in response.neighborhoods if n.neighborhood_id == "bronzeville")
+    pending = next(n for n in response.neighborhoods if n.neighborhood_id == "back-of-the-yards")
 
-    assert bronzeville.available is False
-    assert bronzeville.reason == "Boundary pending approval."
+    assert pending.available is False
+    assert pending.kind == "neighborhood_portion"
+    assert pending.represented_by == "new-city"
+    assert "New City" in (pending.reason or "")
     # There is no count field to be zero — availability is the only thing published.
-    assert not hasattr(bronzeville, "count")
+    assert not hasattr(pending, "count")
+
+
+def test_bronzeville_is_not_a_product_geography(data_dir: Path) -> None:
+    """Bronzeville was removed from the product. It is unknown, not "pending"."""
+    with pytest.raises(OverviewDataUnavailable, match="Unknown geography"):
+        build_overview(data_dir, 2024, "bronzeville")
+    assert all(
+        n.neighborhood_id != "bronzeville" for n in build_overview(data_dir, 2024).neighborhoods
+    )
 
 
 # -- quality + integrity ---------------------------------------------------------------
@@ -285,7 +314,18 @@ def test_http_endpoint_returns_woodlawn(data_dir: Path, monkeypatch: pytest.Monk
     assert payload["total_incidents_prior_year"] is None
 
 
-def test_http_bronzeville_returns_an_honest_404(
+def test_http_pending_neighborhood_returns_an_honest_404(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = client_for(data_dir, monkeypatch)
+
+    response = client.get("/api/v1/overview/back-of-the-yards?year=2024")
+
+    assert response.status_code == 404
+    assert "not an official community area" in response.json()["detail"]
+
+
+def test_http_unknown_geography_returns_404(
     data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = client_for(data_dir, monkeypatch)
@@ -293,7 +333,7 @@ def test_http_bronzeville_returns_an_honest_404(
     response = client.get("/api/v1/overview/bronzeville?year=2024")
 
     assert response.status_code == 404
-    assert "Boundary pending approval" in response.json()["detail"]
+    assert "Unknown geography" in response.json()["detail"]
 
 
 def test_http_missing_year_returns_an_honest_error(

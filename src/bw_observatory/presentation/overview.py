@@ -1,4 +1,4 @@
-"""Build the Woodlawn Overview from real Silver + Bronze data.
+"""Build the Overview for one product geography from real Silver + Bronze data.
 
 Silver (`crime_with_geography`) holds the spatial assignment; Bronze holds the incident
 attributes (`primary_type`, `date`). They are joined on the source incident `id`. Bronze is
@@ -6,10 +6,11 @@ opened read-only and never modified.
 
 Rules enforced here, not in the frontend:
 
-* Woodlawn is filtered on `neighborhood_woodlawn`, the point-in-polygon result — never on
-  the city's source `community_area` field, and never on a ward.
-* Bronzeville has no approved boundary, so it is reported as unavailable with a reason. It
-  is never zero and never inferred.
+* Place is decided by `presentation.geography` — Ward 20 overall, or the portion of a
+  community area inside Ward 20 — from the point-in-polygon columns in Silver. Never from
+  the city's source `ward` / `community_area` fields.
+* A geography with no validated boundary is reported as unavailable with a reason. It is
+  never zero and never inferred.
 * Prior-year figures are `None` unless the prior year has actually been enriched. No
   imputation, no "assume flat", no arrows.
 * Crime groupings come from `config/crime_categories.yml`. They are never hardcoded here.
@@ -24,10 +25,20 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 import yaml
 
 from bw_observatory.config import Settings
-from bw_observatory.geography.normalize import load_neighborhood_config
+from bw_observatory.geography.models import SourceStatus
+from bw_observatory.presentation.geography import (
+    GEOGRAPHY_COLUMNS,
+    ProductGeography,
+    boundary_source_text,
+    geography_availability,
+    geography_mask,
+    geography_scope_note,
+    load_geography_registry,
+)
 from bw_observatory.presentation.models import (
     CategoryCount,
     DataQuality,
@@ -146,6 +157,9 @@ def broad_category_of(primary_type: str | None) -> str:
     return lookup.get(primary_type.strip().upper(), unmapped)
 
 
+SOURCE_STATUS_COLUMN = "source_status"
+
+
 def bronze_path(data_dir: Path, year: int) -> Path:
     return data_dir / "bronze" / "crime" / f"{year}.parquet"
 
@@ -175,29 +189,75 @@ def verify_bronze_integrity(data_dir: Path, year: int) -> bool:
     return bool(recorded) and recorded == actual
 
 
-def load_neighborhood_records(data_dir: Path, year: int, neighborhood_id: str) -> pd.DataFrame:
-    """Records for one neighborhood, joining spatial assignment to incident attributes."""
-    silver = silver_path(data_dir, year)
-    bronze = bronze_path(data_dir, year)
+def resolve_geography(geography_id: str) -> ProductGeography:
+    """The requested product geography, or an honest refusal.
 
+    Unknown ids and geographies without a validated boundary both raise, with the reason,
+    so the route answers 404 rather than an empty (zero-looking) payload.
+    """
+    geography = load_geography_registry().get(geography_id)
+    if geography is None:
+        raise OverviewDataUnavailable(f"Unknown geography: {geography_id}")
+    if not geography.is_available:
+        raise OverviewDataUnavailable(
+            f"{geography.display_name} is not available: {geography.reason}"
+        )
+    return geography
+
+
+def load_geography_rows(
+    data_dir: Path,
+    year: int,
+    geography: ProductGeography,
+    extra_columns: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    """Silver rows inside one geography for a year — `id`, the spatial columns, and any
+    `extra_columns` the caller publishes (e.g. `geography_status`).
+
+    Shared by every page so the place filter is applied in exactly one way. The
+    `boundary_vintage` column feeds provenance and is read when present.
+    """
+    silver = silver_path(data_dir, year)
     if not silver.exists():
         raise OverviewDataUnavailable(
             f"No geography-enriched crime data for {year}. Run "
             f"scripts/enrich_crime_geography.py --year {year}."
         )
-    if not bronze.exists():
+    if not bronze_path(data_dir, year).exists():
         raise OverviewDataUnavailable(f"No Bronze crime data for {year}.")
 
-    enriched = pd.read_parquet(silver)
-    flag = f"neighborhood_{neighborhood_id}"
-    if flag not in enriched.columns:
-        raise OverviewDataUnavailable(f"Silver data has no `{flag}` column.")
+    wanted = ["id", *GEOGRAPHY_COLUMNS, *extra_columns]
+    # Columns a partition may or may not carry yet (older enrichments lack them); read the
+    # ones it has rather than failing over to none of them.
+    present = set(pq.read_schema(silver).names)
+    optional = [c for c in ("boundary_vintage", SOURCE_STATUS_COLUMN) if c in present]
+    enriched = pd.read_parquet(silver, columns=[*wanted, *optional])
+    # The point-in-polygon result, not the city's reported ward / community_area.
+    inside = enriched[geography_mask(enriched, geography)]
+    return current_source_view(inside)
 
-    # The point-in-polygon result, not the city's reported community_area.
-    in_neighborhood = enriched[enriched[flag] == True]  # noqa: E712
 
-    attributes = pd.read_parquet(bronze, columns=["id", "primary_type", "date"])
-    return in_neighborhood.merge(attributes, on="id", how="left")
+def current_source_view(rows: pd.DataFrame) -> pd.DataFrame:
+    """Drop records a reconciliation run found the City no longer publishes.
+
+    They stay in Bronze and Silver as provenance (`source_status = source_removed`), but the
+    figures on every page describe the City's *current* published dataset, so they do not
+    count. A partition that predates reconciliation has no such column and is used whole.
+    """
+    if SOURCE_STATUS_COLUMN not in rows.columns:
+        return rows
+    return rows[rows[SOURCE_STATUS_COLUMN].astype("string") != SourceStatus.REMOVED]
+
+
+def load_neighborhood_records(
+    data_dir: Path, year: int, geography: ProductGeography
+) -> pd.DataFrame:
+    """Records for one geography, joining spatial assignment to incident attributes."""
+    inside = load_geography_rows(data_dir, year, geography)
+    attributes = pd.read_parquet(
+        bronze_path(data_dir, year), columns=["id", "primary_type", "date"]
+    )
+    return inside.merge(attributes, on="id", how="left")
 
 
 def count_categories(records: pd.DataFrame) -> dict[str, int]:
@@ -231,6 +291,19 @@ def data_through(records: pd.DataFrame) -> str:
 
 
 def last_refresh(data_dir: Path, year: int) -> str:
+    """When the dataset was last brought up to date with the source.
+
+    The incremental refresh confirms every year against the source's `updated_on` stream,
+    whether or not the year's file needed rewriting, so its last successful run is the
+    honest answer. Before any refresh has run, the year's own download date is.
+    """
+    log_path = data_dir / "bronze" / "crime" / "incremental_refresh_log.parquet"
+    if log_path.exists():
+        log = pd.read_parquet(log_path)
+        if not log.empty and {"status", "dry_run", "end_time"} <= set(log.columns):
+            done = log[(log["status"] == "complete") & (~log["dry_run"].astype(bool))]
+            if not done.empty:
+                return str(done.iloc[-1]["end_time"])[:10]
     manifest_path = data_dir / "bronze" / "crime" / "manifest.parquet"
     if not manifest_path.exists():
         return "unknown"
@@ -270,20 +343,27 @@ def quality_counts(data_dir: Path, year: int) -> dict[str, int]:
 
 
 def neighborhood_availability() -> list[NeighborhoodAvailability]:
-    """Availability comes from the neighborhood config — the same source the pipeline uses."""
-    entries: list[NeighborhoodAvailability] = []
-    for config in load_neighborhood_config():
-        available = config.is_active
-        entries.append(
-            NeighborhoodAvailability(
-                neighborhood_id=config.neighborhood_id,
-                display_name=config.display_name,
-                available=available,
-                # The resident-facing reason. Never "0 incidents".
-                reason=None if available else "Boundary pending approval.",
-            )
-        )
-    return entries
+    """Every product geography and whether it can be shown, from config/geographies.yml."""
+    return geography_availability()
+
+
+def build_provenance(
+    geography: ProductGeography, records: pd.DataFrame, data_dir: Path, year: int, through: str
+) -> Provenance:
+    """Where the figures come from and exactly what place they cover."""
+    ward = load_geography_registry().ward
+    return Provenance(
+        source_dataset_id=CRIME_DATASET_ID,
+        source_dataset_name=CRIME_DATASET_NAME,
+        boundary_type=geography.kind,
+        boundary_source=boundary_source_text(geography),
+        boundary_vintage=boundary_vintage(records),
+        last_refresh=last_refresh(data_dir, year),
+        data_through=through,
+        ward_source=ward.source,
+        ward_vintage=ward.source_vintage,
+        geography_scope=geography_scope_note(geography),
+    )
 
 
 def is_year_to_date(year: int, through: str) -> bool:
@@ -326,20 +406,13 @@ def build_headline(
 def build_overview(
     data_dir: Path,
     year: int,
-    neighborhood_id: str = "woodlawn",
+    neighborhood_id: str | None = None,
 ) -> OverviewResponse:
-    availability = {n.neighborhood_id: n for n in neighborhood_availability()}
-    requested = availability.get(neighborhood_id)
+    # A pending geography (no validated boundary) raises here. No counts are produced, and
+    # none are fabricated.
+    requested = resolve_geography(neighborhood_id or load_geography_registry().default_id)
 
-    if requested is None:
-        raise OverviewDataUnavailable(f"Unknown neighborhood: {neighborhood_id}")
-    if not requested.available:
-        # Bronzeville lands here. No counts are produced, and none are fabricated.
-        raise OverviewDataUnavailable(
-            f"{requested.display_name} is not available: {requested.reason}"
-        )
-
-    records = load_neighborhood_records(data_dir, year, neighborhood_id)
+    records = load_neighborhood_records(data_dir, year, requested)
     if records.empty:
         raise OverviewDataUnavailable(f"No {requested.display_name} records found for {year}.")
 
@@ -347,7 +420,7 @@ def build_overview(
     comparison_available = year_is_enriched(data_dir, prior)
 
     prior_records = (
-        load_neighborhood_records(data_dir, prior, neighborhood_id)
+        load_neighborhood_records(data_dir, prior, requested)
         if comparison_available
         else pd.DataFrame()
     )
@@ -368,15 +441,12 @@ def build_overview(
     ]
 
     quality = quality_counts(data_dir, year)
-    neighborhood_config = next(
-        c for c in load_neighborhood_config() if c.neighborhood_id == neighborhood_id
-    )
 
     through = data_through(records)
     partial = is_year_to_date(year, through)
 
     return OverviewResponse(
-        neighborhood_id=neighborhood_id,
+        neighborhood_id=requested.geography_id,
         neighborhood_name=requested.display_name,
         year=year,
         is_year_to_date=partial,
@@ -394,15 +464,7 @@ def build_overview(
             partial=partial,
             through=through,
         ),
-        provenance=Provenance(
-            source_dataset_id=CRIME_DATASET_ID,
-            source_dataset_name=CRIME_DATASET_NAME,
-            boundary_type=neighborhood_config.boundary_type,
-            boundary_source=neighborhood_config.source,
-            boundary_vintage=boundary_vintage(records),
-            last_refresh=last_refresh(data_dir, year),
-            data_through=through,
-        ),
+        provenance=build_provenance(requested, records, data_dir, year, through),
         data_quality=DataQuality(
             total_bronze_records_year=quality["total"],
             records_without_coordinates=quality["no_coords"],
@@ -411,7 +473,7 @@ def build_overview(
             community_area_mismatches=quality["ca_mismatch"],
             bronze_integrity_verified=verify_bronze_integrity(data_dir, year),
         ),
-        neighborhoods=list(availability.values()),
+        neighborhoods=neighborhood_availability(),
     )
 
 

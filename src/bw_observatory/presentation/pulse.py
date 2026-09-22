@@ -4,6 +4,9 @@ Read-only over Silver (spatial assignment) joined to Bronze (incident attributes
 Every number is computed from the live data; every sentence returned to the reader is
 composed only from those numbers. No cause is inferred, and no prior value is imputed.
 
+Place is Ward 20 overall or the portion of an area inside Ward 20, decided once by
+`presentation.geography` (via `overview.load_geography_rows`). Nothing here filters by place.
+
 The governing rule is the *same-period* comparison: a partial year is compared with January 1
 through the same month and day of the previous year, never with a completed year.
 """
@@ -17,7 +20,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from bw_observatory.geography.normalize import load_neighborhood_config
+from bw_observatory.presentation.geography import (
+    ProductGeography,
+    load_geography_registry,
+    spoken_geography_name,
+)
 from bw_observatory.presentation.models import (
     ArrestSummary,
     BeatConcentration,
@@ -29,24 +36,21 @@ from bw_observatory.presentation.models import (
     MonthlyComparisonPoint,
     PeriodBounds,
     PrimaryTypeChange,
-    Provenance,
     PulseResponse,
 )
 from bw_observatory.presentation.overview import (
-    CRIME_DATASET_ID,
-    CRIME_DATASET_NAME,
     MONTH_LABELS,
     OverviewDataUnavailable,
-    boundary_vintage,
     broad_category_of,
     bronze_path,
+    build_provenance,
     data_through,
     is_year_to_date,
-    last_refresh,
     load_broad_categories,
+    load_geography_rows,
     neighborhood_availability,
     quality_counts,
-    silver_path,
+    resolve_geography,
     verify_bronze_integrity,
     year_is_enriched,
 )
@@ -65,28 +69,12 @@ _MIN_REPEAT_BLOCK = 6
 # -- record loading --------------------------------------------------------------------
 
 
-def load_records(data_dir: Path, year: int, neighborhood_id: str) -> pd.DataFrame:
-    """Dated incident records for one neighborhood/year, with the fields the Pulse needs."""
-    silver = silver_path(data_dir, year)
-    bronze = bronze_path(data_dir, year)
-    if not silver.exists():
-        raise OverviewDataUnavailable(
-            f"No geography-enriched crime data for {year}. Run "
-            f"scripts/enrich_crime_geography.py --year {year}."
-        )
-    if not bronze.exists():
-        raise OverviewDataUnavailable(f"No Bronze crime data for {year}.")
+def load_records(data_dir: Path, year: int, geography: ProductGeography) -> pd.DataFrame:
+    """Dated incident records for one geography/year, with the fields the Pulse needs."""
+    inside = load_geography_rows(data_dir, year, geography)
 
-    flag = f"neighborhood_{neighborhood_id}"
-    # boundary_vintage feeds provenance; keep the read narrow but tolerate its absence.
-    try:
-        enriched = pd.read_parquet(silver, columns=["id", flag, "boundary_vintage"])
-    except (ValueError, KeyError):
-        enriched = pd.read_parquet(silver, columns=["id", flag])
-    in_neighborhood = enriched[enriched[flag] == True]  # noqa: E712
-
-    attributes = pd.read_parquet(bronze, columns=_BRONZE_FIELDS)
-    joined = in_neighborhood.merge(attributes, on="id", how="left")
+    attributes = pd.read_parquet(bronze_path(data_dir, year), columns=_BRONZE_FIELDS)
+    joined = inside.merge(attributes, on="id", how="left")
 
     joined["_when"] = pd.to_datetime(joined["date"], errors="coerce")
     joined["_ptype"] = joined["primary_type"].astype("string").str.upper()
@@ -606,17 +594,11 @@ def build_issues(
 # -- top-level builder -----------------------------------------------------------------
 
 
-def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") -> PulseResponse:
-    availability = {n.neighborhood_id: n for n in neighborhood_availability()}
-    requested = availability.get(neighborhood_id)
-    if requested is None:
-        raise OverviewDataUnavailable(f"Unknown neighborhood: {neighborhood_id}")
-    if not requested.available:
-        raise OverviewDataUnavailable(
-            f"{requested.display_name} is not available: {requested.reason}"
-        )
+def build_pulse(data_dir: Path, year: int, neighborhood_id: str | None = None) -> PulseResponse:
+    # Unknown or pending geographies raise here with the reason; nothing is fabricated.
+    requested = resolve_geography(neighborhood_id or load_geography_registry().default_id)
 
-    current = load_records(data_dir, year, neighborhood_id)
+    current = load_records(data_dir, year, requested)
     if current.empty:
         raise OverviewDataUnavailable(f"No {requested.display_name} records found for {year}.")
 
@@ -630,7 +612,7 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
     prior_bounds = None
     prior_cutoff = None
     if comparison_available:
-        prior_all = load_records(data_dir, prior_year, neighborhood_id)
+        prior_all = load_records(data_dir, prior_year, requested)
         prior_cutoff = same_period_cutoff(through, prior_year)
         prior = _within(prior_all, date(prior_year, 1, 1), prior_cutoff)
         prior_bounds = PeriodBounds(
@@ -697,11 +679,14 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
         (str(block_counts.index[0]), int(block_counts.iloc[0])) if len(block_counts) else None
     )
 
+    # In sentences, a community-area portion is always "the Ward 20 part of X" so no headline
+    # can be read as a claim about the whole community area. The ward is just its name.
+    spoken_name = spoken_geography_name(requested)
     headline = build_headline(
-        requested.display_name, comparison, largest_increase, beat_largest_increase, partial
+        spoken_name, comparison, largest_increase, beat_largest_increase, partial
     )
     narrative = build_narrative(
-        requested.display_name,
+        spoken_name,
         year,
         through_iso,
         partial,
@@ -712,7 +697,7 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
         arrests,
     )
     issues = build_issues(
-        requested.display_name,
+        spoken_name,
         comparison,
         period_label,
         largest_increase,
@@ -724,9 +709,6 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
     )
 
     quality = quality_counts(data_dir, year)
-    neighborhood_config = next(
-        c for c in load_neighborhood_config() if c.neighborhood_id == neighborhood_id
-    )
     comparison_note = (
         ""
         if comparison_available
@@ -734,7 +716,7 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
     )
 
     return PulseResponse(
-        neighborhood_id=neighborhood_id,
+        neighborhood_id=requested.geography_id,
         neighborhood_name=requested.display_name,
         year=year,
         is_year_to_date=partial,
@@ -756,15 +738,7 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
         category_drivers=category_drivers(current, prior),
         beats=beats,
         issues=issues,
-        provenance=Provenance(
-            source_dataset_id=CRIME_DATASET_ID,
-            source_dataset_name=CRIME_DATASET_NAME,
-            boundary_type=neighborhood_config.boundary_type,
-            boundary_source=neighborhood_config.source,
-            boundary_vintage=boundary_vintage(current),
-            last_refresh=last_refresh(data_dir, year),
-            data_through=through_iso,
-        ),
+        provenance=build_provenance(requested, current, data_dir, year, through_iso),
         data_quality=DataQuality(
             total_bronze_records_year=quality["total"],
             records_without_coordinates=quality["no_coords"],
@@ -773,5 +747,5 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str = "woodlawn") ->
             community_area_mismatches=quality["ca_mismatch"],
             bronze_integrity_verified=verify_bronze_integrity(data_dir, year),
         ),
-        neighborhoods=list(availability.values()),
+        neighborhoods=neighborhood_availability(),
     )

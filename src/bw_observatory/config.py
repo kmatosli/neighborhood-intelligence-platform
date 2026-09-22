@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # A directory is the project root when it holds both of these. Checking two markers rather
@@ -60,6 +60,19 @@ class Settings(BaseSettings):
     )
     log_level: str = "INFO"
 
+    # In-process daily crime refresh (bw_observatory.ops.scheduler). Off unless a time is
+    # set; "16:30" means 16:30 UTC every day. Reconciliation runs after the refresh on this
+    # day of the month. A run that exceeds the timeout is killed and logged as failed.
+    refresh_schedule: str | None = Field(
+        default=None, validation_alias=AliasChoices("BW_REFRESH_SCHEDULE")
+    )
+    reconcile_day_of_month: int = Field(
+        default=1, validation_alias=AliasChoices("BW_RECONCILE_DAY")
+    )
+    refresh_timeout_seconds: int = Field(
+        default=3 * 3600, validation_alias=AliasChoices("BW_REFRESH_TIMEOUT_SECONDS")
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -70,6 +83,17 @@ class Settings(BaseSettings):
         # which would point tests and callers at production data instead of their tmp path.
         populate_by_name=True,
     )
+
+    @field_validator("data_dir")
+    @classmethod
+    def _pin_data_root(cls, value: Path) -> Path:
+        # In production BW_DATA_DIR is a symlink (`/var/data/current`) that a release switch
+        # renames over (docs/render-data-deployment.md). Resolving it once here pins every
+        # reader to the release that was current when its Settings were built — the API
+        # constructs Settings per request, the CLIs once per run — so a request can never
+        # read Silver from one release and Bronze from another, and a refresh run never
+        # straddles two releases. A path that does not exist yet resolves unchanged.
+        return value.resolve()
 
     @property
     def crime_data_url(self) -> str:
@@ -86,6 +110,11 @@ class Settings(BaseSettings):
     @property
     def neighborhood_config(self) -> Path:
         return self.config_dir / "neighborhoods" / "neighborhoods.yml"
+
+    @property
+    def geographies_config(self) -> Path:
+        """The product geographies: Ward 20 and the areas within it (config/geographies.yml)."""
+        return self.config_dir / "geographies.yml"
 
     @property
     def bronzeville_geojson(self) -> Path:

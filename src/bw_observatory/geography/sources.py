@@ -10,6 +10,8 @@ recalled from memory. Confirmed 2026-07-11.
     census_tracts      5jrd-6zik  Boundaries - Census Tracts - 2010       updated 2013-05-23
     zip_codes          unjd-c2ca  Boundaries - ZIP Codes                  updated 2025-04-28
     census_block_groups           US Census TIGER/Line 2020, Illinois (state file, 17)
+    neighborhoods      9wp7-iasj  Boundaries - Neighborhoods (shapefile)  updated 2010-12-21
+                                  (map view bbvz-uum9 serves no geometry)  confirmed 2026-09-13
 
 VINTAGE WARNING. These are *current* boundaries. Wards were redrawn for 2023; police beats
 and districts were redrawn effective 2012-12-19; census tracts are 2010 vintage. Assigning a
@@ -136,6 +138,25 @@ CENSUS_BLOCK_GROUPS = BoundarySource(
     ),
 )
 
+NEIGHBORHOODS = BoundarySource(
+    key="neighborhoods",
+    dataset_id="9wp7-iasj",
+    dataset_name="Boundaries - Neighborhoods (Office of Tourism, Neighborhoods_2012b)",
+    geography_type="neighborhood_tourism",
+    source_url="https://data.cityofchicago.org/download/9wp7-iasj/application/zip",
+    id_field_candidates=("PRI_NEIGH", "pri_neigh"),
+    name_field_candidates=("PRI_NEIGH", "pri_neigh"),
+    vintage_start="2012",
+    role="secondary",
+    notes=(
+        "SECONDARY REFERENCE ONLY. The City's own description: 'Neighborhood boundaries in "
+        "Chicago, as developed by the Office of Tourism. These boundaries are approximate and "
+        "names are not official.' The map view (bbvz-uum9) serves no geometry; this is the "
+        "shapefile blob it is drawn from. Ingested 2026-09-13 to evaluate Back of the Yards "
+        "(V2-002A). Never a substitute for an official community area or ward boundary."
+    ),
+)
+
 BOUNDARY_SOURCES: tuple[BoundarySource, ...] = (
     COMMUNITY_AREAS,
     WARDS_CURRENT,
@@ -144,6 +165,7 @@ BOUNDARY_SOURCES: tuple[BoundarySource, ...] = (
     CENSUS_TRACTS,
     CENSUS_BLOCK_GROUPS,
     ZIP_CODES,
+    NEIGHBORHOODS,
 )
 
 # Cook County, Illinois — used to clip the statewide TIGER block-group file.

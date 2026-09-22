@@ -1,0 +1,8 @@
+"size_bytes","extension","file"
+"0",".py","src\bw_observatory\api\__init__.py"
+"0",".py","src\bw_observatory\api\routes\__init__.py"
+"0",".py","src\bw_observatory\clients\__init__.py"
+"0",".py","src\bw_observatory\geography\__init__.py"
+"0",".py","src\bw_observatory\ingest\__init__.py"
+"0",".py","src\bw_observatory\presentation\__init__.py"
+"0",".py","src\bw_observatory\validation\__init__.py"

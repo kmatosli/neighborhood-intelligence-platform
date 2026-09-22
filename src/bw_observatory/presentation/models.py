@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-BRONZEVILLE_UNAVAILABLE = "boundary_pending_approval"
-
 
 class MonthlyPoint(BaseModel):
     """One month of reported incidents."""
@@ -49,15 +47,36 @@ class Provenance(BaseModel):
     boundary_vintage: str
     last_refresh: str
     data_through: str
+    #: The ward map every figure is measured against, and one plain sentence on what the
+    #: figures cover (all of the ward, or only the part of an area inside it).
+    ward_source: str = ""
+    ward_vintage: str = ""
+    geography_scope: str = ""
 
 
 class NeighborhoodAvailability(BaseModel):
-    """Why a neighborhood can or cannot be shown. Bronzeville is never a zero."""
+    """One product geography and whether it can be shown. An unavailable geography carries
+    its reason; its absence is never a count of zero."""
 
     neighborhood_id: str
     display_name: str
     available: bool
     reason: str | None = None
+    #: The boundary system: "ward", "community_area_portion", or "neighborhood_portion".
+    kind: str = "community_area_portion"
+    #: Official community-area number for an area within the ward.
+    community_area: str | None = None
+    #: For a pending neighborhood, the official geography that contains it.
+    represented_by: str | None = None
+    #: Plain-language name of the boundary system, and the exact source when answerable.
+    boundary_system: str = ""
+    boundary_source: str | None = None
+    #: Measured size of the portion inside the ward (documentation values from the registry;
+    #: see config/geographies.yml `measurement`). Published so analytics can warn about small
+    #: denominators; no suppression rule is implied.
+    intersection_sq_mi: float | None = None
+    share_of_ward_area_pct: float | None = None
+    share_of_area_in_ward_pct: float | None = None
 
 
 class IncidentRecord(BaseModel):

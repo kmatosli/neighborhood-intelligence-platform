@@ -155,8 +155,11 @@ def silver_rows() -> list[dict[str, Any]]:
     return [
         {
             "id": str(index),
-            # ids 1-5 are in Woodlawn; 6-7 are not.
-            "neighborhood_woodlawn": index <= 5,
+            # ids 1-5 are in Woodlawn AND Ward 20. 6 is in the Woodlawn community area but
+            # outside the ward; 7 is outside both. Neither may be returned.
+            "spatial_ward_current": "20" if index <= 5 else "5",
+            "spatial_community_area": "42" if index <= 6 else "43",
+            "neighborhood_woodlawn": index <= 6,
             "neighborhood_bronzeville": None,
             "geography_status": "assigned",
         }
@@ -183,14 +186,18 @@ def client_for(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-# -- Woodlawn-only filter ----------------------------------------------------------------
+# -- geography filter --------------------------------------------------------------------
 
 
-def test_only_woodlawn_records_are_returned(data_dir: Path) -> None:
-    page = build_incident_page(data_dir, 2026, page_size=50)
+def test_only_records_inside_the_geography_are_returned(data_dir: Path) -> None:
+    ward = build_incident_page(data_dir, 2026, page_size=50)
+    woodlawn = build_incident_page(data_dir, 2026, page_size=50, neighborhood_id="woodlawn")
 
-    assert page.total_records == 5  # not 7 — ids 6 and 7 are outside Woodlawn
-    assert {r.id for r in page.records} == {"1", "2", "3", "4", "5"}
+    assert ward.neighborhood_id == "ward20"
+    assert ward.total_records == 5  # not 7 — ids 6 and 7 are outside Ward 20
+    assert {r.id for r in ward.records} == {"1", "2", "3", "4", "5"}
+    # Id 6 is Woodlawn-but-not-Ward-20, so the product's Woodlawn excludes it too.
+    assert {r.id for r in woodlawn.records} == {"1", "2", "3", "4", "5"}
 
 
 def test_filter_uses_the_spatial_flag_not_the_reported_community_area(data_dir: Path) -> None:
@@ -395,16 +402,25 @@ def test_http_rejects_an_oversized_page(data_dir: Path, monkeypatch: pytest.Monk
     assert response.status_code == 422  # FastAPI bounds the query parameter
 
 
-def test_http_bronzeville_is_blocked_not_empty(
+def test_http_pending_neighborhood_is_blocked_not_empty(
     data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = client_for(data_dir, monkeypatch)
 
+    response = client.get("/api/v1/incidents/back-of-the-yards?year=2026")
+
+    # An empty list would read as "no incidents in Back of the Yards". It must not.
+    assert response.status_code == 404
+    assert "not an official community area" in response.json()["detail"]
+
+
+def test_http_unknown_geography_is_404(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = client_for(data_dir, monkeypatch)
+
     response = client.get("/api/v1/incidents/bronzeville?year=2026")
 
-    # An empty list would read as "no incidents in Bronzeville". It must not.
     assert response.status_code == 404
-    assert "Boundary pending approval" in response.json()["detail"]
+    assert "Unknown geography" in response.json()["detail"]
 
 
 def test_http_missing_year_is_an_honest_404(

@@ -1,0 +1,4 @@
+"message","name","passed"
+"2024 ACS tract query succeeded","Census","True"
+"Connected without token","Chicago Data Portal","True"
+"No URL configured","Supabase","False"

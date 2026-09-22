@@ -22,8 +22,9 @@ from bw_observatory.presentation.pulse import build_pulse, same_period_cutoff
 
 # -- fixture data ----------------------------------------------------------------------
 
-# 2026 Woodlawn incidents, all within 1 Jan - 15 March (a partial year). Two trailing rows
-# are NOT in Woodlawn, to prove the spatial flag — not the source community_area — is used.
+# 2026 Woodlawn-within-Ward-20 incidents, all within 1 Jan - 15 March (a partial year). Two
+# trailing rows are in the Woodlawn community area but OUTSIDE Ward 20, to prove the spatial
+# ward assignment — not the source ward or community_area — decides membership.
 _CURRENT = [
     ("c1", "2026-01-10", "BATTERY", "true", "0321", "001XX W 63RD ST", True),
     ("c2", "2026-01-20", "THEFT", "false", "0321", "001XX W 63RD ST", True),
@@ -72,7 +73,9 @@ def _silver_frame(rows: list[tuple[Any, ...]]) -> pd.DataFrame:
         [
             {
                 "id": r[0],
-                "neighborhood_woodlawn": r[6],
+                "spatial_ward_current": "20" if r[6] else "5",
+                "spatial_community_area": "42",
+                "neighborhood_woodlawn": True,
                 "neighborhood_bronzeville": None,
                 "boundary_vintage": "community_area:1920;ward:2023",
             }
@@ -314,12 +317,14 @@ def test_http_pulse_endpoint(data_dir: Path, monkeypatch: pytest.MonkeyPatch) ->
     assert payload["neighborhood_name"] == "Woodlawn"
 
 
-def test_http_bronzeville_is_an_honest_404(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_pending_neighborhood_is_an_honest_404(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("DATA_DIR", str(data_dir))
     app = FastAPI()
     app.include_router(pulse_route.router)
     client = TestClient(app, raise_server_exceptions=False)
 
-    response = client.get("/api/v1/pulse/bronzeville?year=2026")
+    response = client.get("/api/v1/pulse/back-of-the-yards?year=2026")
     assert response.status_code == 404
-    assert "Boundary pending approval" in response.json()["detail"]
+    assert "not an official community area" in response.json()["detail"]

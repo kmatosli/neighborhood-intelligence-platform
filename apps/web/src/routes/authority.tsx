@@ -1,12 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { WireShell } from "@/components/WireShell";
+import { NotConnectedCard, PendingStat } from "@/components/Pending";
+import { QuestionHeader } from "@/components/QuestionHeader";
 import { ServicePanel, type ServicePanelData } from "@/components/ServicePanel";
 import { useBrief } from "@/lib/brief";
 
 export const Route = createFileRoute("/authority")({
   head: () => ({
     meta: [
-      { title: "Services & Accountability — Bronzeville & Woodlawn Watch" },
+      { title: "Services & Accountability — Ward 20 Neighborhood Intelligence" },
       {
         name: "description",
         content:
@@ -112,7 +114,10 @@ const PANELS: ServicePanelData[] = [
         "Has the ward published its resurfacing backlog?",
         "How was menu money allocated across competing blocks?",
       ],
-      resident: ["Was the block actually resurfaced?", "Was completion within the promised window?"],
+      resident: [
+        "Was the block actually resurfaced?",
+        "Was completion within the promised window?",
+      ],
     },
     evidenceNote:
       "Fields modelled: request, inspection, cost estimate, selection reason, utility conflict, promised year, start, completion, and resident verification.",
@@ -212,7 +217,8 @@ const PANELS: ServicePanelData[] = [
       alderperson: ["Is there a documented senior access program, and who does it serve?"],
       resident: ["Was rear-door-to-alley access actually cleared?"],
     },
-    evidenceNote: "Participation counts are never invented; the honest empty state is shown until a program is documented.",
+    evidenceNote:
+      "Participation counts are never invented; the honest empty state is shown until a program is documented.",
   },
   {
     id: "rats",
@@ -273,15 +279,12 @@ function Services() {
   return (
     <WireShell>
       <section aria-labelledby="svc" className="mb-6">
-        <p className="wire-label mb-1">Services &amp; Accountability</p>
-        <h1 id="svc" className="font-serif text-2xl leading-snug sm:text-3xl">
-          Are neighborhood services being delivered—and is the alderperson using the tools they
-          actually have?
-        </h1>
-        <p className="mt-2 max-w-2xl text-base text-muted-foreground">
-          Track service problems, department performance, ward action, money, promises, and
-          whether residents confirm the work was completed.
-        </p>
+        <QuestionHeader
+          id="svc"
+          eyebrow="Services & Accountability"
+          question="Are neighborhood services being delivered—and is the alderperson using the tools they actually have?"
+          lede="Track service problems, department performance, ward action, money, promises, and whether residents confirm the work was completed."
+        />
       </section>
 
       {/* Ward service scorecard — honest measures only, no letter grade */}
@@ -295,13 +298,11 @@ function Services() {
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {SCORECARD.map((m) => (
-            <div key={m.label} className="rounded-lg border border-dashed bg-card/50 p-4">
-              <div className="wire-label">{m.label}</div>
-              <div className="mt-1 font-serif text-2xl text-muted-foreground" aria-hidden="true">
-                —
-              </div>
-              <p className="text-xs text-muted-foreground">Source not yet connected: {m.source}.</p>
-            </div>
+            <PendingStat
+              key={m.label}
+              label={m.label}
+              note={`Source not yet connected: ${m.source}.`}
+            />
           ))}
         </div>
       </section>
@@ -334,10 +335,7 @@ function Services() {
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {MORE_ISSUES.map((label) => (
-            <div key={label} className="rounded-lg border border-dashed bg-card/50 p-4">
-              <h3 className="text-base font-medium">{label}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Data source not yet connected.</p>
-            </div>
+            <NotConnectedCard key={label} label={label} />
           ))}
         </div>
       </section>
@@ -352,8 +350,8 @@ function Services() {
           <p className="mt-1 text-base text-muted-foreground">
             When the Chicago 311 (CSR) dataset is connected, this becomes a sortable, filterable,
             exportable table of individual service requests — request number, masked block, status,
-            responsible department, days open, target time, overdue flag, and resident
-            verification. No personal information is ever shown.
+            responsible department, days open, target time, overdue flag, and resident verification.
+            No personal information is ever shown.
           </p>
         </div>
       </section>
@@ -368,9 +366,20 @@ function Services() {
           the brief residents take to a meeting. These handoffs share one issue identifier.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <HandoffCard title="→ Meeting brief" body={`Add any service issue above to your brief. ${brief.items.length} item(s) collected.`} to="/beat-meeting" enabled />
-          <HandoffCard title="→ Related promise" body="Promises tracking is a planned page. The shared issue model is ready to link to it." />
-          <HandoffCard title="→ Related money / project" body="Menu-money and capital project tracking is a planned page. The shared issue model is ready to link to it." />
+          <HandoffCard
+            title="→ Meeting brief"
+            body={`Add any service issue above to your brief. ${brief.items.length} item(s) collected.`}
+            to="/beat-meeting"
+            enabled
+          />
+          <HandoffCard
+            title="→ Related promise"
+            body="Promises tracking is a planned page. The shared issue model is ready to link to it."
+          />
+          <HandoffCard
+            title="→ Related money / project"
+            body="Menu-money and capital project tracking is a planned page. The shared issue model is ready to link to it."
+          />
         </div>
       </section>
 
@@ -407,7 +416,10 @@ function HandoffCard({
   );
   if (enabled && to) {
     return (
-      <Link to={to} className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+      <Link
+        to={to}
+        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
         {inner}
       </Link>
     );
