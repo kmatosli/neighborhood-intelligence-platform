@@ -196,7 +196,8 @@ production disk. Version 2 proceeds in numbered work packages.
   `scripts/build_data_release.py --output/--overwrite` (never clobbers the previous
   release's archive; writes a `.sha256` sidecar) and `bw_observatory.ops.verify_data_root`
   (bounded-memory proof of a staged data root before activation). Production publication
-  is now a versioned release root under `/var/data/releases/<id>` with
+  is now a versioned release root beside the live July one (`/var/data/bw-release-YYYYMMDD`;
+  production was found on 2026-09-21 to be already versioned at `bw-release-20260726`) with
   `BW_DATA_DIR=/var/data/current` as an atomically renamed symlink and a same-mechanism
   rollback — `docs/render-data-deployment.md`. Open owner decisions: push/merge; instance
   size before `BW_REFRESH_SCHEDULE` (Starter + scheduler = catch-up crash loop, see the

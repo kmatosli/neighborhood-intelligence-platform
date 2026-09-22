@@ -324,7 +324,10 @@ def fail(report_lines: list[str], problems: list[str]) -> None:
 def write_sha256_sidecar(archive: Path) -> Path:
     """`<archive>.sha256` in `sha256sum -c` format, so the far side can verify the transfer."""
     sidecar = archive.with_name(archive.name + ".sha256")
-    sidecar.write_text(sha256(archive) + "  " + archive.name + chr(10), encoding="utf-8")
+    # Explicit LF: on Windows, text mode would write CRLF and `sha256sum -c` on the far
+    # side would then look for a file whose name ends in a carriage return.
+    with sidecar.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(sha256(archive) + "  " + archive.name + "\n")
     return sidecar
 
 

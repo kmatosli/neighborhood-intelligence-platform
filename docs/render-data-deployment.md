@@ -9,22 +9,22 @@ out of band as the archive built by `scripts/build_data_release.py`.
 never modified in place — a release is activated by switching a pointer, and the previous
 release stays on disk until it is deliberately retired.**
 
-## The Render service (verified by the owner in the dashboard, 2026-09-21)
+## The Render service (verified by the owner in the dashboard and over SSH, 2026-09-21)
 
 | Item | Value |
 | --- | --- |
 | Service | `neighborhood-intelligence-platform`, region Virginia (US East) |
 | Compute | Standard — 1 CPU, 2 GB RAM |
-| Persistent disk | 10 GB at `/var/data` |
+| Persistent disk | 10 GB at `/var/data` (9.8 G total, 8.3 G free on 2026-09-21) |
 | Deploy source | branch `main`, **Auto-Deploy OFF** (a merge deploys nothing; deploys are started by hand) |
 | Live commit | `502c351` (V1) |
 | Start command | `uv run --no-dev uvicorn bw_observatory.api.app:app --host 0.0.0.0 --port $PORT` |
 | Pre-deploy command | blank |
-| Shell access | Connect → SSH (key-based; prove it works before relying on it, see Transfer) |
+| Shell access | Connect → SSH; key-based, verified working non-interactively from the owner's machine; `scp` to `/var/data` worked for the July upload |
+| On the box | user `render`, checkout `/opt/render/project/src` (a git checkout), uv 0.10.2, Python 3.13.5 |
 
 Because the service starts through `uv`, every command below that runs project code on the
-box is `uv run --no-dev python -m …` from the deployed checkout (Render's default is
-`/opt/render/project/src`; confirm with `pwd` in the SSH session).
+box is `uv run --no-dev python -m …` from `/opt/render/project/src`.
 
 **A service with a persistent disk cannot be zero-downtime deployed:** Render stops the
 instance, then starts the new one with the disk attached. Every deploy and every
@@ -35,8 +35,7 @@ env-var changes do.
 ## What the API reads
 
 The backend resolves its data root from `BW_DATA_DIR` (falling back to `DATA_DIR`) and reads,
-relative to that root, per request (nothing is cached across requests, and the root is not
-resolved at start-up, so a change to what the root points at is visible immediately):
+relative to that root, per request:
 
 - `bronze/crime/<year>.parquet` (2006–newest), `bronze/crime/manifest.parquet`, and the run
   bookkeeping (`refresh_log`, `incremental_refresh_log`, `reconciliation_log`)
@@ -51,23 +50,30 @@ paths under that directory.
 
 ## Layout on the disk
 
+Production is **already versioned**: the July dataset lives in its own directory and
+`BW_DATA_DIR` points straight at it. The V2 layout keeps that directory exactly where it is
+and adds a pointer beside it:
+
 ```
 /var/data/
-  releases/
-    2026-07-26-v1/          the July dataset production runs today (bronze/, silver/, …)
-    2026-09-21/             the next dataset, staged and verified before it is current
-  current -> releases/2026-09-21          a symlink; the ONLY thing the switch changes
+  bw-release-20260726/      the July dataset production runs today — untouched, the rollback target
+  bw-release-20260921/      the next dataset, staged and verified before it is current
+  current -> bw-release-20260921        a symlink; the ONLY thing a switch changes
   incoming/                 archives + .sha256 sidecars as transferred (kept until retired)
+  bw-live/ data-upload/ extracted/ silver/ *.tar.gz      July leftovers (~0.9 GB); not live, not used
 ```
+
+`current` sits in `/var/data` next to the release directories, and every symlink target below
+is written **relative to `/var/data`** (`bw-release-…`, no path prefix). A relative symlink
+target is resolved from the directory that contains the link, so `/var/data/current ->
+bw-release-20260921` means `/var/data/bw-release-20260921`. Never write a target such as
+`releases/…` or `../…` here — there is no `releases/` directory.
 
 `BW_DATA_DIR=/var/data/current`. `Settings` resolves that path once when it is built — per
 API request, per CLI run — so a request never reads Silver from one release and Bronze from
 another if the pointer moves mid-request, and a refresh run is pinned to the release that
-was current when it started (`config.py`, `_pin_data_root`; `tests/test_config.py`).
-
-The one-time migration from the flat July layout (`/var/data/bronze` …) to this layout is in
-"First-time migration" below; it is done with hard links so the live API never sees a missing
-folder.
+was current when it started (`config.py`, `_pin_data_root`; `tests/test_config.py`). The
+refresh scheduler, when enabled, therefore writes into whichever release is current.
 
 ## Build and verify locally (PowerShell)
 
@@ -75,10 +81,11 @@ folder.
 # One archive per release, named for the day it was cut. Refuses to overwrite an existing
 # archive (the previous release's) unless --overwrite is given. Verifies staging checksums,
 # archive permissions, clean extraction, extracted-vs-source SHA-256, and writes a
-# <archive>.sha256 sidecar for the far side. Exits non-zero on any failure.
+# <archive>.sha256 sidecar (LF line ending, `sha256sum -c` format) for the far side.
+# Exits non-zero on any failure.
 uv run python scripts/build_data_release.py --output bw-data-release-2026-09-21.tar.gz
 
-# Re-verify an existing archive without rebuilding it.
+# Re-verify an existing archive without rebuilding it (also rewrites the sidecar).
 uv run python scripts/build_data_release.py --output bw-data-release-2026-09-21.tar.gz --verify-only
 
 # Prove the local tree itself before cutting it: every year present, ids unique and identical
@@ -90,19 +97,24 @@ Staging and the test extraction live under `%TEMP%\bw-data-release\`, outside th
 so they never churn Git or OneDrive. The source `data/` tree is never modified. Archives are
 untracked and must never be staged (`git status` will list them; leave them).
 
+Release cut 2026-09-21: `bw-data-release-2026-09-21.tar.gz`, 549,011,035 bytes (523.58 MiB),
+SHA-256 `e1eba8285f1dde8acd857e18f9f2cad2aaddd46af1f050a7f6d53313f2939b33`, data through
+2026-09-06, source watermark 2026-09-13T15:54:07.
+
 ## Transfer
 
-The transfer mechanism depends on the Render plan and is not recorded in this repo. Paid
-Render services expose SSH; `scp` the archive and its sidecar into `/var/data/incoming/` on the
-**persistent disk** (not `/tmp`, which does not survive a restart):
+Plain `scp` over the service's SSH works (that is how the July archive arrived). Copy the
+archive and its sidecar into `/var/data/incoming/` on the **persistent disk** (not `/tmp`,
+which does not survive a restart):
 
 ```bash
-# on the laptop
+# on the laptop; <srv> is the service id from Connect → SSH
+ssh <srv>@ssh.virginia.render.com 'mkdir -p /var/data/incoming && df -h /var/data'
 scp bw-data-release-2026-09-21.tar.gz bw-data-release-2026-09-21.tar.gz.sha256 \
-    <service-ssh-host>:/var/data/incoming/
+    <srv>@ssh.virginia.render.com:/var/data/incoming/
 ```
 
-Then, in the service Shell, prove the copy before touching anything else:
+Then, in the SSH session, prove the copy before touching anything else:
 
 ```bash
 cd /var/data/incoming && sha256sum -c bw-data-release-2026-09-21.tar.gz.sha256   # expect: OK
@@ -111,64 +123,68 @@ cd /var/data/incoming && sha256sum -c bw-data-release-2026-09-21.tar.gz.sha256  
 ## Stage and verify the release (live dataset untouched)
 
 ```bash
-mkdir -p /var/data/releases/2026-09-21
-tar -xzf /var/data/incoming/bw-data-release-2026-09-21.tar.gz -C /var/data/releases/2026-09-21
-ls /var/data/releases/2026-09-21                                   # bronze silver reference …
+mkdir -p /var/data/bw-release-20260921
+tar -xzf /var/data/incoming/bw-data-release-2026-09-21.tar.gz -C /var/data/bw-release-20260921
+ls /var/data/bw-release-20260921                                   # bronze silver reference …
 
-# Full consistency proof of the staged root — streams, bounded memory, read-only.
-# Needs the V2 checkout on the box (the verifier ships with V2), so this runs after the
-# V2 backend deploy; until then, check the extraction by shape only:
-find /var/data/releases/2026-09-21 -type f | wc -l        # expect 64
-du -sm /var/data/releases/2026-09-21                        # expect ≈ 678 MiB
-cd /opt/render/project/src   # the deployed checkout (confirm with pwd)
-uv run --no-dev python -m bw_observatory.ops.verify_data_root --data-dir /var/data/releases/2026-09-21
+# Shape check, possible before V2 code is on the box:
+find /var/data/bw-release-20260921 -type f | wc -l        # expect 64
+du -sm /var/data/bw-release-20260921                        # expect ≈ 678 MiB
+
+# Full consistency proof — streams, bounded memory, read-only. Needs the V2 checkout on the
+# box (the verifier ships with V2), so this runs after the V2 backend deploy:
+cd /opt/render/project/src
+uv run --no-dev python -m bw_observatory.ops.verify_data_root --data-dir /var/data/bw-release-20260921
 # expect: RESULT: PASS, and the Freshness line's data_through / source_watermark equal the
 # values the local run printed before the archive was cut.
 ```
 
-If this prints anything but PASS, stop: remove `/var/data/releases/2026-09-21` and start again.
-Production has not been affected.
+If this prints anything but PASS, stop: remove `/var/data/bw-release-20260921` and start
+again. Production has not been affected.
 
-## First-time migration (July flat layout → release roots)
+## Initial pointer (once, before the V2 deploy)
 
-Done once, while the API still has `BW_DATA_DIR=/var/data`. Hard links (`cp -al`) make the
-release copy instantly and without extra space, and the original folders stay in place, so the
-running API never sees a missing file.
+The July root stays where it is. Create the pointer beside it, aimed at July, while the V1
+API still reads `BW_DATA_DIR=/var/data/bw-release-20260726` directly — the running service
+does not notice:
 
 ```bash
-mkdir -p /var/data/releases/2026-07-26-v1
-for d in bronze silver reference catalog review gold; do
-  [ -d "/var/data/$d" ] && cp -al "/var/data/$d" "/var/data/releases/2026-07-26-v1/$d"
-done
-ls /var/data/releases/2026-07-26-v1                      # bronze silver …
-ln -s releases/2026-07-26-v1 /var/data/current
+cd /var/data
+ln -s bw-release-20260726 current
+readlink current                                    # bw-release-20260726
+ls current/bronze/crime/manifest.parquet            # resolves through the link
 ```
 
-The July root is expected to fail `verify_data_root` on one known point once V2 code is on
-the box — `2024: 18 Bronze id(s) with no Silver row` (the drift the 2026-07-26 Bronze
-restore left, repaired locally by V2-004). That is its pre-existing state, not damage.
-
 Then set `BW_DATA_DIR=/var/data/current` in the Render environment together with the V2
-backend deploy (one outage instead of two; Auto-Deploy is off, so save the variable and
-then "Deploy latest commit" by hand). The API now serves the same July bytes through the
-symlink; verify `/api/v1/health`, `/api/v1/years`, and one data endpoint before continuing. The flat top-level folders are now
-redundant hard links; leave them until the new release has been live and verified, then
-remove only them (`rm -rf /var/data/bronze …` removes links, not the release's files).
+backend deploy (Auto-Deploy is off: save the variable, then "Deploy latest commit" by hand —
+one outage rather than two, if the UI lets the save wait for the deploy). The V2 API now
+serves the same July bytes through the symlink; verify `/api/v1/health`, `/api/v1/years`,
+`/api/v1/geographies`, and one data endpoint before continuing.
+
+Once V2 code is on the box, `verify_data_root` on the July root is expected to report one
+known point — `2024: 18 Bronze id(s) with no Silver row` (the drift the 2026-07-26 Bronze
+restore left, repaired locally by V2-004). That is its pre-existing state, not damage.
 
 ## Switch (atomic) and rollback
 
 A symlink is replaced atomically by renaming a new one over it; `ln -sfn` is **not** atomic
-(it unlinks, then creates). Every request opens its files after the rename, so no request
-ever mixes two releases except one already in flight across the instant of the switch.
+(it unlinks, then creates). Every request pins its root when it starts, so no request ever
+mixes two releases. Both commands are run from `/var/data` so the relative targets are
+unambiguous; the mechanism was exercised on Linux (rename over a symlink leaves no
+`current.next` behind and rollback is symmetric).
 
 ```bash
+cd /var/data
+
 # activate
-ln -s releases/2026-09-21 /var/data/current.next && mv -T /var/data/current.next /var/data/current
-readlink /var/data/current                     # releases/2026-09-21
-uv run --no-dev python -m bw_observatory.ops.verify_data_root   # the live root (BW_DATA_DIR)
+ln -s bw-release-20260921 current.next && mv -T current.next current
+readlink current                                    # bw-release-20260921
+cd /opt/render/project/src && uv run --no-dev python -m bw_observatory.ops.verify_data_root   # the live root
 
 # rollback — identical mechanism, previous target
-ln -s releases/2026-07-26-v1 /var/data/current.next && mv -T /var/data/current.next /var/data/current
+cd /var/data
+ln -s bw-release-20260726 current.next && mv -T current.next current
+readlink current                                    # bw-release-20260726
 ```
 
 No restart is needed for either direction. The refresh scheduler must be **off** (or its lock
@@ -178,10 +194,10 @@ switch, so that no writer is mid-run in the release being left.
 After the switch, confirm end to end through the public path (no data host leaked):
 
 ```bash
-curl -s "$RENDER_EXTERNAL_URL/api/v1/health"                  # {"status":"ok"}
-curl -s "$RENDER_EXTERNAL_URL/api/v1/years"                   # 21 years, latest 2026
-curl -s "$RENDER_EXTERNAL_URL/api/v1/freshness"               # data_through 2026-09-06 (for the 2026-09-21 release)
-curl -s "$RENDER_EXTERNAL_URL/api/v1/pulse/ward20?year=2025"  # 7813 incidents
+curl -s "$PUBLIC/api/v1/health"                  # {"status":"ok"}
+curl -s "$PUBLIC/api/v1/years"                   # 21 years, latest 2026
+curl -s "$PUBLIC/api/v1/freshness"               # data_through 2026-09-06 (for the 2026-09-21 release)
+curl -s "$PUBLIC/api/v1/pulse/ward20?year=2025"  # 7813 incidents
 ```
 
 `bronze_integrity_verified` in the overview payload SHA-256s each Bronze file against the
@@ -190,21 +206,20 @@ manifest that ships inside the release; it must read `true`.
 ## Retiring a release
 
 Only after the new release has served traffic and been verified, and only with explicit
-approval: `rm -rf /var/data/releases/<old>` and its archive under `incoming/`. Keep at least
-one previous release on disk at all times.
+approval: `rm -rf /var/data/bw-release-<old>` and its archive under `incoming/`. Keep at
+least one previous release on disk at all times. The July leftovers (`bw-live/`,
+`data-upload/`, `extracted/`, `silver/`, the two July tarballs, ≈ 0.9 GB) are likewise the
+owner's call; nothing reads them.
 
-Disk budget (10 GB disk): July flat layout ≈ 0.44 GB (its hard-linked release copy costs
-nothing extra) + archive ≈ 0.5 GB under `incoming/` + extracted release ≈ 0.68 GB +
-refresh staging headroom ≈ 0.1 GB (one year's Bronze+Silver, staged beside the live files)
-≈ **1.75 GB in use** with both releases retained. Minimum free space to start:
-**≥ 1.5 GB** (`df -h /var/data` before the transfer). Verification adds nothing: it reads.
+Disk budget (10 GB disk, 8.3 GB free before this release): July root ≈ 0.58 GB (already in
+use) + archive ≈ 0.52 GB under `incoming/` + extracted release ≈ 0.68 GB + refresh staging
+headroom ≈ 0.1 GB (one year's Bronze+Silver, staged beside the live files) ≈ **1.3 GB of new
+use**. Minimum free space to start: **≥ 1.5 GB** (`df -h /var/data` before the transfer).
+Verification adds nothing: it reads.
 
 ## Items to confirm before any of this runs on Render
 
-- **SSH actually authenticates** (a public key must be registered on the Render account;
-  the dashboard shows the command regardless): `ssh <srv>@ssh.virginia.render.com 'echo ok'`,
-  then a 1-byte `scp` into `/var/data/incoming/` before the real transfer.
-- **Where the deployed checkout lives** on the instance (`pwd` in the SSH session).
-- **Free space**: `df -h /var/data` ≥ 1.5 GB.
+- **Free space**: `df -h /var/data` ≥ 1.5 GB (8.3 GB on 2026-09-21).
+- **The scheduler is off** (`BW_REFRESH_SCHEDULE` unset) until the release switch is done.
 - `review/` (block-level CSV for local review, ≈ 0.3 MB) ships with the archive; exclude it
   before transfer if it should not be on the disk.

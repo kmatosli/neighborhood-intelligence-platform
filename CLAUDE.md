@@ -349,9 +349,12 @@ Approved production architecture (frozen — do not reopen):
   `https://neighborhood-intelligence-platform.onrender.com` (the browser never
   learns it; it is only Vercel's build-time `API_ORIGIN`).
 - **Data:** Render persistent disk at `/var/data`, **10 GB**, seeded out of band
-  as versioned release roots (`/var/data/releases/<id>`, pointer
-  `/var/data/current`, `BW_DATA_DIR=/var/data/current` once migrated — see
-  `docs/render-data-deployment.md`). Never committed. A service with a disk is
+  as versioned release roots that sit directly under `/var/data`
+  (`/var/data/bw-release-YYYYMMDD`; July's `bw-release-20260726` is live today
+  with `BW_DATA_DIR` pointing straight at it). V2 adds the pointer
+  `/var/data/current -> bw-release-…` (relative target, resolved from
+  `/var/data`) and sets `BW_DATA_DIR=/var/data/current` — see
+  `docs/render-data-deployment.md`. Never committed. A service with a disk is
   restarted, not zero-downtime deployed: every deploy is a brief outage.
 - **Routing:** `apps/web/nitro.config.ts` emits a `/api/**` proxy into the Vercel
   build output. The browser never learns the Render hostname. Do NOT use a
