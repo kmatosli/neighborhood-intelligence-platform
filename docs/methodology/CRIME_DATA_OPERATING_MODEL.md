@@ -153,10 +153,12 @@ CLI a person would run as a subprocess. It is off until `BW_REFRESH_SCHEDULE` is
 If the process starts and the last successful refresh is more than 24 h old, one catch-up
 run happens two minutes after start, so a deploy at the wrong time does not cost a day.
 
-**Memory is the open decision.** Measured 2026-09-15: the API process idles at ~130 MB and
-peaks at ~500 MB under a burst of requests; a daily refresh peaks at ~390 MB; reconciliation
-at ~320 MB. Both cannot be guaranteed to fit a 0.5 CPU / 512 MB Starter instance at the
-same time. Running the scheduler in production therefore needs either the next compute
-plan (1 CPU / 2 GB "Standard") or the product owner's acceptance that Render may restart the
-service on memory pressure during the daily run. Nothing is scheduled until that choice is
-made.
+**Memory.** Measured 2026-09-15 (Windows, daily-sized delta): the API process idles at
+~130 MB and peaks at ~500 MB under a burst of requests; a daily refresh peaks at ~390 MB;
+reconciliation at ~320 MB. The production service is a Standard instance (1 CPU / 2 GB,
+verified by the owner 2026-09-21), so the worst measured coincidence — API burst + refresh +
+reconciliation ≈ 1.2 GB — fits with headroom; on the 512 MB Starter it would not have, and
+the catch-up-after-restart rule above would have turned one memory kill into a restart
+loop. Nothing is scheduled until `BW_REFRESH_SCHEDULE` is set deliberately, and the first
+run after enabling it should be watched in the service log (`Scheduler:` lines and the
+refresh CLI's own log) and confirmed by `/api/v1/freshness`.

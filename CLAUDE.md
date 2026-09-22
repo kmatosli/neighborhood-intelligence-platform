@@ -340,12 +340,19 @@ Approved production architecture (frozen — do not reopen):
 - **Frontend:** Vercel, project rooted at `apps/web`. Nitro selects its native
   Vercel preset automatically in the Vercel environment; the Cloudflare output
   seen on a local build is only Nitro's fallback preset, not a configuration.
-- **Backend:** FastAPI on a paid Render web service (Ohio, Starter tier),
-  branch `main`, root directory blank, build `pip install .`, start
-  `uvicorn bw_observatory.api.app:app --host 0.0.0.0 --port $PORT`, health check
-  `/api/v1/health`.
-- **Data:** Render persistent disk at `/var/data`, `BW_DATA_DIR=/var/data`,
-  5 GB, seeded out of band. Never committed.
+- **Backend:** FastAPI on a paid Render web service
+  `neighborhood-intelligence-platform` (Virginia / US East, **Standard: 1 CPU,
+  2 GB RAM**, verified by the owner 2026-09-21), branch `main`, **Auto-Deploy
+  OFF** (deploys are started by hand), start
+  `uv run --no-dev uvicorn bw_observatory.api.app:app --host 0.0.0.0 --port $PORT`,
+  health check `/api/v1/health`. Public origin
+  `https://neighborhood-intelligence-platform.onrender.com` (the browser never
+  learns it; it is only Vercel's build-time `API_ORIGIN`).
+- **Data:** Render persistent disk at `/var/data`, **10 GB**, seeded out of band
+  as versioned release roots (`/var/data/releases/<id>`, pointer
+  `/var/data/current`, `BW_DATA_DIR=/var/data/current` once migrated — see
+  `docs/render-data-deployment.md`). Never committed. A service with a disk is
+  restarted, not zero-downtime deployed: every deploy is a brief outage.
 - **Routing:** `apps/web/nitro.config.ts` emits a `/api/**` proxy into the Vercel
   build output. The browser never learns the Render hostname. Do NOT use a
   `vercel.json` rewrite — the Nitro Vercel preset does not merge it.

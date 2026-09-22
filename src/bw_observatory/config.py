@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # A directory is the project root when it holds both of these. Checking two markers rather
@@ -83,6 +83,17 @@ class Settings(BaseSettings):
         # which would point tests and callers at production data instead of their tmp path.
         populate_by_name=True,
     )
+
+    @field_validator("data_dir")
+    @classmethod
+    def _pin_data_root(cls, value: Path) -> Path:
+        # In production BW_DATA_DIR is a symlink (`/var/data/current`) that a release switch
+        # renames over (docs/render-data-deployment.md). Resolving it once here pins every
+        # reader to the release that was current when its Settings were built — the API
+        # constructs Settings per request, the CLIs once per run — so a request can never
+        # read Silver from one release and Bronze from another, and a refresh run never
+        # straddles two releases. A path that does not exist yet resolves unchanged.
+        return value.resolve()
 
     @property
     def crime_data_url(self) -> str:
