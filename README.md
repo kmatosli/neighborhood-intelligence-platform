@@ -1,6 +1,12 @@
-# Bronzeville–Woodlawn Observatory
+# Ward 20 Neighborhood Intelligence
 
-A civic-data project focused only on Bronzeville and Woodlawn in Chicago.
+A civic-data platform for **Chicago's Ward 20** and the neighborhoods within it
+(the portions of Woodlawn, Washington Park, Englewood, Fuller Park and New City that
+lie inside the ward). Working public name pending a final product name.
+
+> The repository is still named `bronzeville-woodlawn-observatory` and the Python
+> package `bw_observatory` for historical reasons. Bronzeville is no longer a product
+> geography — see `docs/methodology/GEOGRAPHY.md` and ADR-0005.
 
 ## Current phase
 
@@ -47,27 +53,25 @@ uv run python scripts/download_crime_history.py --year 2024 --force
 
 Output lands in `data/bronze/crime/` (`<year>.parquet`, `manifest.parquet`, `refresh_log.parquet`) with logs in `logs/`. Records are stored exactly as published — no filtering, no cleaning, no neighborhood assignment. Geography fields are preserved for later GIS work.
 
-## Keeping crime data current (incremental refresh)
+## Keeping crime data current
 
-The historical loader re-downloads whole years. To bring the data up to date, run the
-incremental refresh instead. It fetches only records whose source `updated_on` is at or after
-the last watermark (the portal stamps that column on every insert **and** every later edit),
-upserts them by `id` into the right year's Bronze file, updates the manifest checksum, and
-point-in-polygon enriches only the new or changed rows into Silver.
+The historical loader re-downloads whole years and is **not** the freshness path. Crime
+data stays current through a daily incremental refresh (source `updated_on` watermark,
+upsert by `id`, only new/changed rows re-enriched), a monthly reconciliation that marks
+records the City has since removed (`source_status`, never deleted), and a read-only health
+endpoint. The full model — schedule, safety properties, failure behaviour, production
+scheduling and its open memory decision — is in
+[docs/methodology/CRIME_DATA_OPERATING_MODEL.md](docs/methodology/CRIME_DATA_OPERATING_MODEL.md).
 
 ```powershell
-uv run python scripts/refresh_crime.py --dry-run   # report what would change, write nothing
-uv run python scripts/refresh_crime.py             # apply
+uv run python scripts/refresh_crime.py --dry-run     # what would change; writes nothing
+uv run python scripts/refresh_crime.py               # daily incremental refresh
+uv run python scripts/reconcile_crime.py             # monthly: mark source-removed rows
+curl http://127.0.0.1:8000/api/v1/freshness          # current | stale | refresh_failed
 ```
 
-Safe to run repeatedly: an interrupted run restarts from the same watermark, and a second run
-with nothing new leaves every file byte-identical. Each run appends one row to
-`data/bronze/crime/incremental_refresh_log.parquet` (watermarks, rows fetched / inserted /
-updated / unchanged, per-year local-vs-source row reconciliation). The source publishes one
-batch a day and withholds the most recent seven days, so a daily run is the right cadence; a
-non-zero negative reconciliation drift means the city removed records, which only a
-`download_crime_history.py --year <y> --force` re-pull can reflect.
-
+Safe to run repeatedly; a second concurrent run exits with "already running". Logs:
+`data/bronze/crime/incremental_refresh_log.parquet` and `reconciliation_log.parquet`.
 
 ## Quality checks
 
@@ -83,5 +87,5 @@ uv run pytest
 - Never commit downloaded crime data.
 - Never commit API tokens.
 - Preserve official source fields.
-- Treat Bronzeville as a custom GIS boundary, not a single community area.
+- A neighborhood figure is always the portion inside Ward 20, never a whole community area.
 - Do not infer causation, nationality, or immigration status from crime records.

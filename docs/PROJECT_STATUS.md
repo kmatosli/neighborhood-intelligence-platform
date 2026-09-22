@@ -44,7 +44,89 @@ Last updated: 2026-07-11.
 - CI running Ruff, Ruff format, mypy (`strict`), and pytest
 - **42 tests passing; Ruff passing; mypy passing**
 
-## V2-004 — Crime refresh (2026-09-14)
+## V2 work packages
+
+The sections above describe the data-foundation phase and are retained as history. Since then
+the API (`bw_observatory.api`) and the web app (`apps/web`) were built and deployed as a
+development preview (Render backend + Vercel frontend), with Bronze and Silver 2006–2026 on the
+production disk. Version 2 proceeds in numbered work packages.
+
+- **V2-001 — Global navigation, year context, and mobile foundation.** Completed
+  2026-09-12 (local; not yet committed or deployed).
+  - One canonical year authority: the URL's `?year`, validated at the root route and retained
+    across navigation (`apps/web/src/lib/useYear.ts`, `apps/web/src/routes/__root.tsx`). The
+    year list comes from `/api/v1/years`; no year is hardcoded. Invalid or missing years fall
+    back to the latest enriched year.
+  - Shared `YearControl` in the shell (`apps/web/src/components/YearControl.tsx`), shown only
+    on routes that consume year, with explicit loading / unavailable / empty states.
+  - Mobile-first shell and question-oriented navigation (`apps/web/src/components/WireShell.tsx`):
+    stacked nav on phones, wrapping tab bar from `sm`, 44px tap targets, visible focus, no
+    horizontal overflow verified at 320/375/430px and at 640px (≈200% zoom).
+  - Shared coming-soon / not-connected presentation (`apps/web/src/components/Pending.tsx`) and
+    page-question header (`apps/web/src/components/QuestionHeader.tsx`) replace per-page copies;
+    wording and caveats preserved.
+  - Not in this package (flagged for later packages): public Lovable metadata/branding in
+    `apps/web/src/routes/__root.tsx`, product naming, the methodology/trust layer, Ward 20
+    scope and neighborhood breakdowns.
+
+- **V2-002 — Ward 20 geography foundation.** Completed 2026-09-12 (local; not committed or
+  deployed). See ADR-0005 and `docs/methodology/GEOGRAPHY.md`.
+  - Product scope is now exclusively **Ward 20**: `ward20` is the default geography; the
+    portions of Woodlawn, Washington Park, Englewood, Fuller Park and New City inside the
+    ward are selectable; Back of the Yards is listed as pending a validated boundary.
+  - One geography authority per side: `config/geographies.yml` +
+    `src/bw_observatory/presentation/geography.py` (filter on `spatial_ward_current` /
+    `spatial_community_area`); `apps/web/src/lib/useGeography.ts` (URL `?geo=`, alongside
+    `?year=`). New `GET /api/v1/geographies`. Unknown/pending ids are 404 with the reason.
+  - Bronzeville removed from public identity, copy and application geography; pipeline
+    history, ADR-0004 and Silver columns retained. Lovable metadata removed; working public
+    identity "Ward 20 Neighborhood Intelligence"; SVG favicon.
+  - Tests: 172 passing (`tests/test_geographies_api.py` added). Browser matrix 41/41.
+  - Pending: final product name; `pyproject.toml` name/description unchanged on purpose.
+
+- **V2-002A — Ward 20 geography gaps closed.** Completed 2026-09-13 (local; not committed
+  or deployed).
+  - Ingested the City's *Boundaries - Neighborhoods* shapefile (`9wp7-iasj`, Office of
+    Tourism) as a **secondary** reference layer with manifest/checksums. Finding: it has no
+    Back of the Yards feature; the two polygons carrying that name as a secondary label are
+    geometrically identical to community areas 61 and 37. **Back of the Yards stays pending**
+    with that reason recorded (`config/geographies.yml` → `evaluated_source`).
+  - Explicit geography types (`ward`, `community_area_portion`, `neighborhood_portion`) in
+    the registry, API provenance and catalog (`boundary_system`, `boundary_source`).
+  - Reusable, documented intersection measurement (`geography/ward_coverage.py`,
+    `scripts/measure_ward_coverage.py`, EPSG:3435): all nine intersecting community areas
+    measured; the four non-selectable ones disclosed with sq mi and both shares — no UI change.
+  - Coverage/double-counting invariants tested (ward total independent of drilldowns;
+    drilldowns clipped; overlaps cannot alter the ward; pending never zero). 183 tests pass.
+  - Deleted the unlinked Lovable-era `apps/web/public/favicon.ico` (approved).
+  - **Revised product decision (2026-09-13, same day):** all nine intersecting community areas
+    are drilldowns, small portions included, because the drilldowns serve geographic equity
+    analysis and hiding small portions could conceal disproportionate patterns. Selector
+    labels "X (part in Ward 20)", headings and every generated sentence say "the Ward 20 part
+    of X"; the scope note states the portion's measured size (no suppression rule). Ward total
+    still computed from the ward polygon alone. "Current Ward 20 footprint" methodology kept
+    and documented; intended equity questions documented (not built). 184 tests pass;
+    browser matrix 26/26.
+
+- **V2-003 — Equity & accountability data readiness audit.** Completed 2026-09-14 (documentation
+  only; no analytics built). Deliverable: `docs/data/WARD20_EQUITY_DATA_READINESS.md`, with
+  the reproducible source table `docs/data/source_readiness_2026-09-14.json`
+  (`scripts/audit_source_readiness.py`, `src/bw_observatory/audit/source_readiness.py`).
+  - In the repo: crime only (Bronze/Silver 2006–2026, local copy through 2026-07-02; no
+    incremental refresh) plus boundary layers. **Nothing** for 311, Census attributes,
+    TIF/investment, parcels, streets.
+  - Key findings: the 311 dataset (`v6vf-nfxy`, 2018-12 onward) is 99.9 % geocoded but its
+    `ward` field is the ward at creation time (≈77 % of pre-2023 "ward 20" rows are in today's
+    polygon) — Ward 20 filtering must be point-in-polygon; completion semantics vary by
+    category; Census API now requires a key (`CENSUS_API_KEY`); 2020 block groups straddle the
+    ward (13 of 92 fully inside) so blocks are the denominator path; 76 % of Ward 20 area lies
+    in active TIF districts; no authoritative menu-money dataset exists.
+  - **Selected next package: V2-004 — 311 service requests (denominator-free request →
+    response → completion measures for Ward 20 and the nine portions).** Not started.
+  - Environment note (2026-09-14): Windows Application Control began blocking
+    `pyogrio/_io.pyd`; `geopandas.read_file` fails, so 2 pipeline tests in
+    `tests/test_geography.py` and the geography download/measure scripts fail on this machine
+    until the policy is fixed. Not a repo defect; 182/184 tests otherwise pass.
 
 - **V2-004 — Crime refresh reliability and currentness.** Completed 2026-09-14 (local; not
   committed or pushed). Re-scoped from the requested "311 refresh" once the repo showed the
@@ -74,6 +156,51 @@ Last updated: 2026-07-11.
     the OneDrive-synced working tree can stall a file swap for minutes (seen on 2017).
   - Next data package remains **V2-005 — 311 service requests**, exactly as V2-003 selected.
     Not started.
+  - Checkpoint commit `9eeb19f` (local, 2026-09-15; not pushed).
+
+- **V2-004A — Crime production freshness, automation, and source reconciliation.**
+  Completed locally 2026-09-15 (not committed, not pushed, nothing deployed or scheduled).
+  Operating model: `docs/methodology/CRIME_DATA_OPERATING_MODEL.md`.
+  - Invariants (`ingest/partitions.py::partition_problems`) proved after every publish:
+    unique ids on both layers, identical id sets, manifest rows + checksum match the file.
+    Bronze and Silver for a year are staged together and swapped back to back; failed
+    staging is discarded; the 2024 Silver drift class is detected and repaired every run.
+  - Bounded memory: all partition I/O streams in 20 000-row batches; files repacked into
+    20 000-row groups (`ops.repack_crime`, one-time). Refresh ≈ 390 MB peak, reconcile
+    ≈ 320 MB — the API alone peaks ≈ 500 MB under load, so both do **not** fit a 512 MB
+    Starter instance together (owner decision, see the operating model).
+  - Source-truth model: Silver `source_status` / `source_last_seen` / `source_removed_at`;
+    `ops.reconcile_crime` lists source ids per year and marks removals (never deletes);
+    `presentation.overview.current_source_view` excludes `source_removed` rows from every
+    figure. First reconciliation (2026-09-15): 210 removed rows across 2017–2026 (5 inside
+    Ward 20), 0 missing locally, 0 reappeared; older years reconciled with 0 removals.
+  - Concurrency: `ingest/refresh_lock.py` (O_EXCL lock file, dead-pid/6 h stale takeover);
+    CLIs exit 3 when a run is active.
+  - Health: `/api/v1/freshness` (`ingest/freshness.py`): current / stale (48 h or > 11
+    days behind) / refresh_failed / never_refreshed, with the full run bookkeeping.
+  - Scheduling: `ops/scheduler.py` inside the API process (a Render disk is reachable only
+    by its own service — cron/one-off jobs cannot see it), subprocess-based, off unless
+    `BW_REFRESH_SCHEDULE` is set; monthly reconciliation on `BW_RECONCILE_DAY`.
+  - `last_refresh` provenance now = last successful refresh run (log), not the year file's
+    write time. `pyarrow.*` added to the mypy untyped-import override.
+  - Tests: 30 new in `tests/test_crime_operations.py` (suite 229 → see report).
+
+- **Release checkpoint 2026-09-21 (local commits; nothing pushed, deployed, or scheduled).**
+  Recovery found nothing changed since 2026-09-15: local data through 2026-09-06, watermark
+  2026-09-13; production still V1 (`main` @ `502c351`) with data through 2026-07-02, at
+  `https://neighborhood-intelligence-platform.onrender.com` behind
+  `bronzeville-woodlawn-observatory.vercel.app` (Vercel is CLI-deployed, no Git link). Full
+  suite 230 passed, ruff and mypy clean. The V2 work was committed as four selective commits
+  on `feature/research-platform`: V2-001–003 foundation, V2-004A freshness, deployment
+  tooling, documentation. Release safety added with the deployment commit:
+  `scripts/build_data_release.py --output/--overwrite` (never clobbers the previous
+  release's archive; writes a `.sha256` sidecar) and `bw_observatory.ops.verify_data_root`
+  (bounded-memory proof of a staged data root before activation). Production publication
+  is now a versioned release root under `/var/data/releases/<id>` with
+  `BW_DATA_DIR=/var/data/current` as an atomically renamed symlink and a same-mechanism
+  rollback — `docs/render-data-deployment.md`. Open owner decisions: push/merge; instance
+  size before `BW_REFRESH_SCHEDULE` (Starter + scheduler = catch-up crash loop, see the
+  operating model); the Render SSH/transfer path; the one-time `BW_DATA_DIR` change.
 
 ## Next feature
 
@@ -82,7 +209,9 @@ Last updated: 2026-07-11.
 
 Then, in order:
 
-1. Daily automated refresh — **Automation readiness (V2-004):** the manual command is
+1. Daily automated refresh — **V2-004A built it** (in-process scheduler, off until
+   `BW_REFRESH_SCHEDULE` is set); what remains is the instance-size decision and setting
+   the env var. Earlier note (V2-004): the manual command is
    idempotent and restartable, so scheduling is a wrapper, not new logic. Still required
    for production: (a) a place to run it with write access to the Render disk (`/var/data`)
    — a Render cron job on the same disk, or run on the API service via `render` shell —
