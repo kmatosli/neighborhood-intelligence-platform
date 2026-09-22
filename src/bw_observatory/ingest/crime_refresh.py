@@ -26,11 +26,19 @@ What one run does, in order, per affected year:
 
 Safety properties the design leans on:
 
-* every file is written to a temporary sibling and swapped in with `os.replace`, so a
-  crash never leaves a half-written Parquet in place;
+* a year's Bronze and Silver files are both staged as temp siblings and then swapped in
+  back to back with `os.replace`, so a crash never leaves a half-written Parquet in place
+  and the window in which the two layers disagree is milliseconds, not minutes;
+* after every publish the partition invariants are proved (`partitions.partition_problems`)
+  — unique ids, identical id sets on both layers, manifest checksum matching the file — and
+  a run that cannot prove them fails;
 * the watermark only advances when a run finishes, so an interrupted run is re-done from
   the same point — the upsert makes that harmless;
+* one writer at a time (`refresh_lock.RefreshLock`): a second refresh exits with "already
+  running" instead of interleaving partition writes;
 * nothing historical is deleted: rows are replaced by `id` or left alone;
+* Bronze is handled as Arrow tables, never as whole pandas frames, so the largest year fits
+  comfortably beside the API on a 512 MB instance;
 * `--dry-run` fetches, classifies, and reports; the only thing it writes is its own row in
   the refresh log, flagged `dry_run`, which the watermark ignores.
 """
@@ -38,7 +46,6 @@ Safety properties the design leans on:
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -46,17 +53,17 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from bw_observatory.clients.chicago_data import ChicagoDataClient
 from bw_observatory.config import Settings
 from bw_observatory.geography.assign import (
-    OUTPUT_COLUMNS,
     GeographyAssigner,
-    quality_row,
+    bronze_downloaded_at,
     silver_path,
     upsert_quality_row,
 )
-from bw_observatory.geography.models import GeographyStatus
+from bw_observatory.geography.models import GeographyStatus, SourceStatus
 from bw_observatory.geography.normalize import read_neighborhoods, read_silver_geography
 from bw_observatory.ingest.base import (
     DATASET_ACTIVE,
@@ -77,6 +84,26 @@ from bw_observatory.ingest.crime_history import (
     dataset_last_updated,
     year_where_clause,
 )
+from bw_observatory.ingest.partitions import (
+    bronze_schema,
+    column_max,
+    discard,
+    file_columns,
+    frame_schema,
+    frame_to_table,
+    ids_present,
+    partition_ids,
+    partition_problems,
+    publish,
+    quality_row_from_file,
+    row_count,
+    rows_for_ids,
+    sorted_by_id,
+    stream_rewrite,
+    temp_sibling,
+    write_parquet_atomic,
+)
+from bw_observatory.ingest.refresh_lock import RefreshLock
 
 INCREMENTAL_LOG_FILENAME = "incremental_refresh_log.parquet"
 
@@ -101,6 +128,7 @@ INCREMENTAL_LOG_COLUMNS = [
     "partitions_touched",
     "final_bronze_rows",
     "reconciliation",
+    "duration_seconds",
     "dry_run",
     "status",
     "error",
@@ -124,6 +152,7 @@ class PartitionRefresh:
     silver_orphans: int = 0
     local_rows: int = 0
     source_rows: int | None = None
+    moved_ids: list[str] = field(default_factory=list)
 
     @property
     def drift(self) -> int | None:
@@ -186,18 +215,6 @@ class NothingToRefreshFrom(RuntimeError):
 
     The first load is the historical downloader's job; a refresh only moves forward.
     """
-
-
-def write_parquet_atomic(frame: pd.DataFrame, path: Path) -> None:
-    """Write to a sibling temp file, then swap. The old file is intact until the swap."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        frame.to_parquet(temporary, index=False)
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
 
 
 def partition_year(date_value: Any) -> int | None:
@@ -304,9 +321,8 @@ class CrimeRefresher:
 
         per_partition: list[str] = []
         for year in self.bronze_years():
-            column = pd.read_parquet(self.bronze_partition(year), columns=[WATERMARK_COLUMN])
-            latest = column[WATERMARK_COLUMN].dropna().max()
-            if isinstance(latest, str) and latest:
+            latest = column_max(self.bronze_partition(year), WATERMARK_COLUMN)
+            if latest:
                 per_partition.append(latest)
         if not per_partition:
             raise NothingToRefreshFrom(
@@ -352,6 +368,11 @@ class CrimeRefresher:
     # -- run ------------------------------------------------------------------------
 
     def run(self, *, dry_run: bool = False, since: str | None = None) -> RefreshResult:
+        """One refresh. Raises `AlreadyRunning` if another writer holds the lock."""
+        with RefreshLock(self.bronze_dir):
+            return self._run_locked(dry_run=dry_run, since=since)
+
+    def _run_locked(self, *, dry_run: bool, since: str | None) -> RefreshResult:
         metadata = self.client.get_metadata()
         try:
             schema_warnings = self.downloader.validate_schema(metadata)
@@ -393,6 +414,8 @@ class CrimeRefresher:
             result.warnings += record_warnings
             result.rows_fetched = len(records)
             self._apply(records, metadata, result, dry_run=dry_run)
+            if not dry_run:
+                self._verify_moves(result)
             result.status = STATUS_COMPLETE
         except Exception as exc:
             result.status = STATUS_FAILED
@@ -445,20 +468,35 @@ class CrimeRefresher:
         # boundary is moved rather than duplicated.
         current_home = self._locate_ids(set(fetched["id"]))
 
+        seen_at = iso(result.start_time)
         for year in sorted(years.unique()):
             incoming = fetched[years == year].set_index("id")
             partition = PartitionRefresh(year=int(year))
-            self._refresh_partition(partition, incoming, current_home, metadata, dry_run)
+            self._refresh_partition(partition, incoming, current_home, metadata, dry_run, seen_at)
             result.partitions.append(partition)
 
     def _locate_ids(self, ids: set[str]) -> dict[str, int]:
+        """Which year file currently holds each id. An id found in two files (a move that
+        was interrupted before the old copy was removed) resolves to the later year, and
+        the refresh of that year removes the stale copy."""
         home: dict[str, int] = {}
         for year in self.bronze_years():
-            column = pd.read_parquet(self.bronze_partition(year), columns=["id"])
-            for value in column["id"]:
-                if value in ids:
-                    home[str(value)] = year
+            for record_id in ids_present(self.bronze_partition(year), ids):
+                home[str(record_id)] = year
         return home
+
+    def _verify_moves(self, result: RefreshResult) -> None:
+        """A moved id must now live in exactly one year file."""
+        moved = {record_id for p in result.partitions for record_id in p.moved_ids}
+        if not moved:
+            return
+        homes: dict[str, list[int]] = {}
+        for year in self.bronze_years():
+            for record_id in ids_present(self.bronze_partition(year), moved):
+                homes.setdefault(str(record_id), []).append(year)
+        duplicated = {k: v for k, v in homes.items() if len(v) > 1}
+        if duplicated:
+            raise RuntimeError(f"ids present in more than one year after refresh: {duplicated}")
 
     def _refresh_partition(
         self,
@@ -467,18 +505,18 @@ class CrimeRefresher:
         current_home: dict[str, int],
         metadata: dict[str, Any],
         dry_run: bool,
+        seen_at: str,
     ) -> None:
         year = partition.year
         bronze_file = self.bronze_partition(year)
-        existing = (
-            pd.read_parquet(bronze_file).set_index("id")
-            if bronze_file.exists()
-            else pd.DataFrame(columns=incoming.columns, index=pd.Index([], name="id"))
-        )
+        bronze_exists = bronze_file.exists()
+        existing_ids = partition_ids(bronze_file) if bronze_exists else set()
 
-        shared = incoming.index.intersection(existing.index)
-        if len(shared):
-            changed = rows_differ(existing.loc[shared], incoming.loc[shared])
+        incoming_ids = set(map(str, incoming.index))
+        shared_ids = incoming_ids & existing_ids
+        shared = pd.Index(sorted(shared_ids))
+        if shared_ids:
+            changed = rows_differ(rows_for_ids(bronze_file, shared_ids), incoming.loc[shared])
         else:
             changed = pd.Series(False, index=shared, dtype=bool)
         partition.unchanged = int((~changed).sum())
@@ -491,18 +529,22 @@ class CrimeRefresher:
             old_year = current_home.get(str(record_id))
             if old_year is not None and old_year != year:
                 moved_from.setdefault(old_year, []).append(str(record_id))
-        partition.moved_out = sum(len(ids) for ids in moved_from.values())
+        partition.moved_ids = [i for ids in moved_from.values() for i in ids]
+        partition.moved_out = len(partition.moved_ids)
 
         # Only rows that are new or changed need to be re-enriched. Unchanged rows keep the
         # Silver assignment they already have.
-        to_write = incoming.index.difference(shared).union(changed[changed].index)
+        to_write = set(incoming_ids - shared_ids) | set(changed[changed].index.astype(str))
 
         # Column order follows the existing file, then anything new the source now sends.
-        columns = list(dict.fromkeys([*existing.columns, *incoming.columns]))
-        merged = pd.concat([existing.drop(index=shared), incoming])
-        merged = merged.reindex(columns=columns).astype("string").reset_index()
-        merged = merged.sort_values("id", key=_id_order, kind="stable").reset_index(drop=True)
-        partition.local_rows = len(merged)
+        columns = list(
+            dict.fromkeys(
+                [*(file_columns(bronze_file) if bronze_exists else []), "id", *incoming.columns]
+            )
+        )
+        bronze_schema_ = bronze_schema(columns)
+        merged_ids = existing_ids | incoming_ids
+        partition.local_rows = len(merged_ids)
 
         partition.source_rows = self.client.count_crimes(year_where_clause(year))
 
@@ -522,19 +564,14 @@ class CrimeRefresher:
         # Silver is read before anything is decided so a partition whose Silver fell out
         # of step with Bronze (a year re-downloaded without being re-enriched) is healed
         # here: every Bronze id with no Silver row is enriched alongside the changed rows,
-        # and a Silver row with no Bronze record is dropped by the reindex below.
+        # and a Silver row with no Bronze record is dropped on the way through.
         silver_file = self.silver_partition(year)
-        silver_existing = (
-            pd.read_parquet(silver_file)
-            if silver_file.exists()
-            else pd.DataFrame(columns=OUTPUT_COLUMNS)
-        )
-        silver_columns = list(silver_existing.columns) or OUTPUT_COLUMNS
-        silver_existing["id"] = silver_existing["id"].astype("string")
-        lacking_silver = merged.index[~merged["id"].isin(silver_existing["id"])]
-        to_enrich = to_write.union(pd.Index(merged.loc[lacking_silver, "id"]))
-        partition.silver_backfilled = int(len(to_enrich) - len(to_write))
-        partition.silver_orphans = int((~silver_existing["id"].isin(merged["id"])).sum())
+        silver_exists = silver_file.exists()
+        silver_ids = partition_ids(silver_file) if silver_exists else set()
+        to_enrich = to_write | (merged_ids - silver_ids)
+        orphans = silver_ids - merged_ids
+        partition.silver_backfilled = len(to_enrich) - len(to_write)
+        partition.silver_orphans = len(orphans)
         if partition.silver_backfilled or partition.silver_orphans:
             self.log.warning(
                 "Refresh %d: Silver was out of step with Bronze — %d Bronze record(s) had no "
@@ -546,23 +583,78 @@ class CrimeRefresher:
             )
 
         # Enrichment runs in dry-run too, so the report can say how many changed rows have
-        # no usable geography before anything is committed.
-        changed_bronze = merged[merged["id"].isin(to_enrich)]
-        enriched = self.assigner.enrich(changed_bronze.reset_index(drop=True), year)
+        # no usable geography before anything is committed. Rows come from the fetched
+        # batch when they are in it and from the Bronze file (only those rows) otherwise.
+        from_incoming = incoming.loc[sorted(to_enrich & incoming_ids)]
+        from_file = (
+            rows_for_ids(bronze_file, to_enrich - incoming_ids)
+            if bronze_exists and (to_enrich - incoming_ids)
+            else None
+        )
+        changed_bronze = (
+            pd.concat([from_incoming, from_file]) if from_file is not None else from_incoming
+        )
+        changed_bronze = changed_bronze.reset_index().astype("string")
+        enriched = self.assigner.enrich(changed_bronze, year, seen_at=seen_at)
         partition.missing_geography = int(
             (enriched["geography_status"] != GeographyStatus.ASSIGNED).sum()
         )
 
         if dry_run:
             return
+        if not to_enrich and not orphans and not moved_from:
+            # Every fetched row was already held verbatim: nothing to write, and the files
+            # (and their checksums) stay byte-for-byte what they were.
+            self.log.info("Refresh %d: nothing to write", year)
+            return
 
-        # 1. Bronze, then its manifest row. The checksum is what the API verifies.
+        # Stage both layers as streams — the old file minus the replaced rows, then the new
+        # rows — and publish them back to back; the manifest and quality rows follow at
+        # once. Anything that fails before `publish` touches no live file.
         started = now()
-        write_parquet_atomic(merged, bronze_file)
+        silver_schema = frame_schema(enriched)
+        silver_defaults = {
+            "source_status": SourceStatus.ACTIVE,
+            "source_last_seen": bronze_downloaded_at(self.bronze_dir, year) or "",
+        }
+        staged: dict[Path, Path] = {}
+        try:
+            staged[bronze_file] = temp_sibling(bronze_file)
+            written_bronze = stream_rewrite(
+                bronze_file if bronze_exists else None,
+                staged[bronze_file],
+                schema=bronze_schema_,
+                drop=incoming_ids,
+                append=sorted_by_id(frame_to_table(incoming.reset_index(), bronze_schema_)),
+            )
+            staged[silver_file] = temp_sibling(silver_file)
+            written_silver = stream_rewrite(
+                silver_file if silver_exists else None,
+                staged[silver_file],
+                schema=silver_schema,
+                drop=to_enrich | orphans,
+                append=sorted_by_id(frame_to_table(enriched, silver_schema)),
+                defaults=silver_defaults,
+            )
+            if (
+                len(written_bronze) != partition.local_rows
+                or len(set(written_bronze)) != len(written_bronze)
+                or set(written_bronze) != set(written_silver)
+                or len(written_silver) != len(written_bronze)
+            ):
+                raise RuntimeError(
+                    f"{year}: staged Bronze holds {len(written_bronze)} rows and Silver "
+                    f"{len(written_silver)}, expected {partition.local_rows} identical ids. "
+                    "Refusing to publish a partition that drops or duplicates records."
+                )
+        except BaseException:
+            discard(staged)
+            raise
+        publish(staged)
         self.writer.upsert_manifest_entry(
             {
                 "partition": str(year),
-                "rows": len(merged),
+                "rows": partition.local_rows,
                 "download_started": iso(started),
                 "download_completed": iso(now()),
                 "api_version": self.downloader.api_version,
@@ -571,38 +663,54 @@ class CrimeRefresher:
                 "status": STATUS_COMPLETE,
             }
         )
-
-        # 2. Silver for the same year: replace the changed rows, keep everything else.
-        silver_kept = silver_existing[~silver_existing["id"].isin(to_enrich)]
-        silver_merged = pd.concat([silver_kept, enriched.reindex(columns=silver_columns)])
-        # Same row order as Bronze, and one Silver row per Bronze row or nothing is written.
-        silver_merged = silver_merged.set_index("id").reindex(merged["id"]).reset_index()
-        unmatched = int(silver_merged["geography_status"].isna().sum())
-        if len(silver_merged) != len(merged) or unmatched:
-            raise RuntimeError(
-                f"{year}: Silver would hold {len(silver_merged)} rows against {len(merged)} "
-                f"Bronze rows, with {unmatched} Bronze record(s) lacking a Silver row. "
-                "Refusing to write a partition that drops records."
-            )
-        write_parquet_atomic(silver_merged, silver_file)
         upsert_quality_row(
             self.silver_dir,
-            quality_row(silver_merged, year, self.assigner.bronzeville_available),
+            quality_row_from_file(silver_file, year, self.assigner.bronzeville_available),
         )
 
-        # 3. Records that moved into this year leave the year they came from.
+        # Records that moved into this year leave the year they came from.
         for old_year, ids in moved_from.items():
             self._remove_ids(old_year, ids, metadata)
 
+        self._assert_sound(year)
+
+    def _assert_sound(self, year: int) -> None:
+        problems = partition_problems(self.bronze_dir, self.silver_dir, year)
+        if problems:
+            raise RuntimeError(
+                "partition invariants violated after publish: " + "; ".join(problems)
+            )
+
     def _remove_ids(self, year: int, ids: list[str], metadata: dict[str, Any]) -> None:
         bronze_file = self.bronze_partition(year)
-        bronze = pd.read_parquet(bronze_file)
-        bronze = bronze[~bronze["id"].isin(ids)].reset_index(drop=True)
-        write_parquet_atomic(bronze, bronze_file)
+        silver_file = self.silver_partition(year)
+        staged: dict[Path, Path] = {}
+        try:
+            staged[bronze_file] = temp_sibling(bronze_file)
+            written = stream_rewrite(
+                bronze_file,
+                staged[bronze_file],
+                schema=bronze_schema(file_columns(bronze_file)),
+                drop=set(ids),
+                append=None,
+            )
+            if silver_file.exists():
+                staged[silver_file] = temp_sibling(silver_file)
+                stream_rewrite(
+                    silver_file,
+                    staged[silver_file],
+                    schema=pq.read_schema(silver_file),
+                    drop=set(ids),
+                    append=None,
+                )
+        except BaseException:
+            discard(staged)
+            raise
+        publish(staged)
         self.writer.upsert_manifest_entry(
             {
                 "partition": str(year),
-                "rows": len(bronze),
+                "rows": len(written),
                 "download_started": iso(now()),
                 "download_completed": iso(now()),
                 "api_version": self.downloader.api_version,
@@ -611,23 +719,18 @@ class CrimeRefresher:
                 "status": STATUS_COMPLETE,
             }
         )
-        silver_file = self.silver_partition(year)
         if silver_file.exists():
-            silver = pd.read_parquet(silver_file)
-            silver = silver[~silver["id"].astype("string").isin(ids)].reset_index(drop=True)
-            write_parquet_atomic(silver, silver_file)
             upsert_quality_row(
-                self.silver_dir, quality_row(silver, year, self.assigner.bronzeville_available)
+                self.silver_dir,
+                quality_row_from_file(silver_file, year, self.assigner.bronzeville_available),
             )
         self.log.info("Refresh %d: %d record(s) moved to another year", year, len(ids))
+        self._assert_sound(year)
 
     # -- bookkeeping ----------------------------------------------------------------
 
     def _count_bronze_rows(self) -> int:
-        total = 0
-        for year in self.bronze_years():
-            total += len(pd.read_parquet(self.bronze_partition(year), columns=["id"]))
-        return total
+        return sum(row_count(self.bronze_partition(year)) for year in self.bronze_years())
 
     def _append_log(self, result: RefreshResult) -> None:
         reconciliation = {
@@ -653,6 +756,7 @@ class CrimeRefresher:
             "partitions_touched": ",".join(str(p.year) for p in result.partitions),
             "final_bronze_rows": result.final_bronze_rows,
             "reconciliation": json.dumps(reconciliation),
+            "duration_seconds": round(result.elapsed_seconds, 1),
             "dry_run": result.dry_run,
             "status": result.status,
             "error": result.error,

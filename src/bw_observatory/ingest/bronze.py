@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,7 @@ __all__ = [
     "ParquetBronzeWriter",
     "file_checksum",
     "manifest_columns",
+    "write_frame_atomic",
     "records_to_frame",
     "serialize_record",
 ]
@@ -102,6 +105,20 @@ def records_to_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
     rows = [serialize_record(record) for record in records]
     frame = pd.DataFrame(rows, columns=columns, dtype="string")
     return frame.reindex(columns=columns)
+
+
+def write_frame_atomic(frame: pd.DataFrame, path: Path) -> None:
+    """Write a small bookkeeping file (manifest, logs, quality) via a temp sibling and an
+    `os.replace`, so a crash mid-write leaves the previous version intact rather than a
+    truncated Parquet the API can no longer read."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        frame.to_parquet(temporary, index=False)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def file_checksum(path: Path) -> str:
@@ -178,8 +195,7 @@ class ParquetBronzeWriter(BaseBronzeWriter):
         updated = pd.concat([manifest, pd.DataFrame([row], columns=self.manifest_columns)])
         updated = updated.sort_values(self.partition_column).reset_index(drop=True)
 
-        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        updated.to_parquet(self.manifest_path, index=False)
+        write_frame_atomic(updated, self.manifest_path)
 
     def completed_partitions(self) -> set[str]:
         manifest = self.read_manifest()
@@ -194,5 +210,4 @@ class ParquetBronzeWriter(BaseBronzeWriter):
         existing = self._read(self.refresh_log_path, REFRESH_LOG_COLUMNS)
         updated = pd.concat([existing, pd.DataFrame([entry], columns=REFRESH_LOG_COLUMNS)])
 
-        self.refresh_log_path.parent.mkdir(parents=True, exist_ok=True)
-        updated.reset_index(drop=True).to_parquet(self.refresh_log_path, index=False)
+        write_frame_atomic(updated.reset_index(drop=True), self.refresh_log_path)

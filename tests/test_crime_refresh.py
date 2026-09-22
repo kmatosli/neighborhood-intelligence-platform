@@ -403,7 +403,8 @@ def test_silver_that_fell_out_of_step_with_bronze_is_healed(
     result = refresher.run()
 
     assert (result.rows_silver_backfilled, result.rows_silver_orphans) == (1, 1)
-    assert bronze(refresher, 2024)["id"].tolist() == ["1", "2", "8"]
+    # Surviving rows keep their place; new and re-enriched rows are appended in id order.
+    assert bronze(refresher, 2024)["id"].tolist() == ["1", "8", "2"]
     enriched = silver(refresher, 2024).set_index("id")
     assert enriched.index.tolist() == ["1", "2", "8"]
     assert enriched.loc["8", "spatial_ward_current"] == "20"

@@ -60,6 +60,19 @@ class Settings(BaseSettings):
     )
     log_level: str = "INFO"
 
+    # In-process daily crime refresh (bw_observatory.ops.scheduler). Off unless a time is
+    # set; "16:30" means 16:30 UTC every day. Reconciliation runs after the refresh on this
+    # day of the month. A run that exceeds the timeout is killed and logged as failed.
+    refresh_schedule: str | None = Field(
+        default=None, validation_alias=AliasChoices("BW_REFRESH_SCHEDULE")
+    )
+    reconcile_day_of_month: int = Field(
+        default=1, validation_alias=AliasChoices("BW_RECONCILE_DAY")
+    )
+    refresh_timeout_seconds: int = Field(
+        default=3 * 3600, validation_alias=AliasChoices("BW_REFRESH_TIMEOUT_SECONDS")
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -86,6 +99,11 @@ class Settings(BaseSettings):
     @property
     def neighborhood_config(self) -> Path:
         return self.config_dir / "neighborhoods" / "neighborhoods.yml"
+
+    @property
+    def geographies_config(self) -> Path:
+        """The product geographies: Ward 20 and the areas within it (config/geographies.yml)."""
+        return self.config_dir / "geographies.yml"
 
     @property
     def bronzeville_geojson(self) -> Path:
