@@ -11,18 +11,18 @@ from bw_observatory.presentation.overview import OverviewDataUnavailable, build_
 router = APIRouter(prefix="/api/v1/overview", tags=["overview"])
 
 
-@router.get("/{neighborhood_id}", response_model=OverviewResponse)
+@router.get("/{geography_id}", response_model=OverviewResponse)
 def get_overview(
-    neighborhood_id: str,
+    geography_id: str,
     year: int = Query(default=2024, ge=2006, le=2100),
 ) -> OverviewResponse:
-    """Overview for one neighborhood and year.
+    """Overview for one geography (Ward 20 overall or an area within it) and year.
 
     Missing data returns an honest 404 with the reason. It never returns zeros, sample
     figures, or a partially-invented payload.
     """
     settings = Settings()
     try:
-        return build_overview(settings.data_dir, year, neighborhood_id.lower())
+        return build_overview(settings.data_dir, year, geography_id.lower())
     except OverviewDataUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,11 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { WireShell } from "@/components/WireShell";
+import { QuestionHeader } from "@/components/QuestionHeader";
+import {
+  ComingSoonNotice,
+  PendingControl,
+  PendingControls,
+  PendingStat,
+  PendingVisual,
+} from "@/components/Pending";
 import { useBrief } from "@/lib/brief";
 
 export const Route = createFileRoute("/beat-meeting")({
   head: () => ({
     meta: [
-      { title: "Beat Meeting Brief — Bronzeville & Woodlawn" },
+      { title: "Beat Meeting Brief — Ward 20 Neighborhood Intelligence" },
       {
         name: "description",
         content:
@@ -21,10 +29,7 @@ function BeatMeeting() {
     <WireShell>
       <section className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="wire-label mb-2">Main question</p>
-          <h1 className="font-serif text-2xl leading-snug sm:text-3xl">
-            What should residents ask at the next beat meeting?
-          </h1>
+          <QuestionHeader question="What should residents ask at the next beat meeting?" />
         </div>
         {/* Disabled: neither export exists yet, and a button that does nothing when pressed
             reads as a broken site rather than an unfinished one. */}
@@ -51,31 +56,30 @@ function BeatMeeting() {
         </div>
       </section>
 
-      <p className="mb-6 rounded-md border bg-caution/20 p-3 text-base" role="note">
-        <strong>Live data coming soon.</strong> The automated pattern detection below is not yet
-        connected to validated live data. The issues <em>you</em> added from the Overview page,
-        however, carry live figures and appear first.
-      </p>
+      <div className="mb-6">
+        <ComingSoonNotice>
+          The automated pattern detection below is not yet connected to validated live data. The
+          issues <em>you</em> added from the Overview page, however, carry live figures and appear
+          first.
+        </ComingSoonNotice>
+      </div>
 
       <YourBrief />
 
       {/* Beat selector — kept in place, disabled until it selects against real data. */}
-      <section className="mb-6 grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
-        <p id="controls-pending" className="wire-label sm:col-span-3">
-          Controls are disabled until this page is connected to live data
-        </p>
-        <Control label="Beat" id="beat" options={["0311", "0312", "0313", "0314"]} />
-        <Control
+      <PendingControls label="Beat controls" columns="sm:grid-cols-3">
+        <PendingControl label="Beat" id="beat" options={["0311", "0312", "0313", "0314"]} />
+        <PendingControl
           label="Window"
           id="window"
           options={["Last 30 days", "Last 90 days", "Last 365 days"]}
         />
-        <Control
+        <PendingControl
           label="Compare with"
           id="cmp"
           options={["Same 90 days, prior year", "Prior 90 days"]}
         />
-      </section>
+      </PendingControls>
 
       {/* Snapshot — the tiles stay so the shape of the brief is legible. No values, because
           no value has been computed. A dash is not a zero and is not a guess. */}
@@ -123,8 +127,8 @@ function BeatMeeting() {
           Who has authority to act
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Reference information about which office is responsible for what. This does not depend
-          on the crime data and is shown in full.
+          Reference information about which office is responsible for what. This does not depend on
+          the crime data and is shown in full.
         </p>
         <div className="mt-3 overflow-x-auto rounded-lg border bg-card">
           <table className="w-full min-w-[32rem] text-left text-sm">
@@ -174,7 +178,10 @@ function YourBrief() {
 
   if (brief.items.length === 0) {
     return (
-      <section aria-labelledby="your-brief" className="mb-8 rounded-lg border border-dashed bg-card/50 p-4">
+      <section
+        aria-labelledby="your-brief"
+        className="mb-8 rounded-lg border border-dashed bg-card/50 p-4"
+      >
         <h2 id="your-brief" className="font-serif text-xl">
           Your brief is empty
         </h2>
@@ -220,7 +227,9 @@ function YourBrief() {
               {item.beat && <BriefRow term="Beat" desc={item.beat} />}
               <BriefRow term="Responsible authority" desc={item.primaryAuthority} />
               {item.alderpersonRole && <BriefRow term="Alderperson" desc={item.alderpersonRole} />}
-              {item.residentQuestion && <BriefRow term="Question to ask" desc={`“${item.residentQuestion}”`} />}
+              {item.residentQuestion && (
+                <BriefRow term="Question to ask" desc={`“${item.residentQuestion}”`} />
+              )}
               {item.evidence && <BriefRow term="Evidence" desc={item.evidence} />}
             </dl>
           </li>
@@ -239,61 +248,6 @@ function BriefRow({ term, desc }: { term: string; desc: string }) {
     <div className="grid grid-cols-[9rem_1fr] gap-2">
       <dt className="text-muted-foreground">{term}</dt>
       <dd>{desc}</dd>
-    </div>
-  );
-}
-
-/**
- * A visualization with no validated data behind it yet. Renders no marks and no numbers, and
- * names what is planned so the page still communicates its purpose.
- */
-function PendingVisual({ height, planned }: { height: number; planned: string }) {
-  return (
-    <div
-      className="mt-3 flex items-center justify-center rounded-md border border-dashed bg-muted/30 p-4 text-center"
-      style={{ minHeight: height }}
-      role="note"
-    >
-      <div className="max-w-md">
-        <p className="wire-label">Live data coming soon</p>
-        <p className="mt-1 text-base">
-          This visualization is not yet connected to validated live data.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">Planned: {planned}</p>
-      </div>
-    </div>
-  );
-}
-
-/** A headline figure whose value has not been computed. The dash never stands in for zero. */
-function PendingStat({ label }: { label: string }) {
-  return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="wire-label">{label}</div>
-      <div className="mt-1 font-serif text-3xl text-muted-foreground" aria-hidden="true">
-        —
-      </div>
-      <div className="text-xs text-muted-foreground">Live data coming soon</div>
-    </div>
-  );
-}
-
-function Control({ label, id, options }: { label: string; id: string; options: string[] }) {
-  return (
-    <div>
-      <label htmlFor={id} className="wire-label mb-1 block text-muted-foreground">
-        {label}
-      </label>
-      <select
-        id={id}
-        disabled
-        aria-describedby="controls-pending"
-        className="w-full cursor-not-allowed rounded-md border bg-muted px-2 py-1.5 text-sm text-muted-foreground opacity-70"
-      >
-        {options.map((o) => (
-          <option key={o}>{o}</option>
-        ))}
-      </select>
     </div>
   );
 }

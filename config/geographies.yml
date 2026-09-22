@@ -1,0 +1,222 @@
+# Product geographies — the places a resident can choose in the application.
+#
+# The analytical universe is Ward 20. Every statistic the application publishes is for
+# Ward 20 as a whole or for the PORTION of a neighborhood that lies inside Ward 20 — never
+# for a whole community area, part of which is outside the ward.
+#
+#     Chicago -> Ward 20 -> neighborhood/area within Ward 20 -> smaller geography
+#
+# How a record is placed (all point-in-polygon, from the geography-enriched Silver layer):
+#   * in Ward 20            : spatial_ward_current == "20"
+#   * in an area within it  : spatial_ward_current == "20" AND spatial_community_area == <id>
+# The city's own reported `ward` / `community_area` fields are never used for this.
+#
+# Ward 20 is the 2023 ward map (City of Chicago "Boundaries - Wards (2023-)", p293-wvbd),
+# applied to every year of incidents, including years before 2023. That keeps one fixed
+# boundary across the whole series so years are comparable; it also means older years are
+# described by today's ward lines, not the ward lines in force at the time.
+#
+# Relationship to config/neighborhoods/neighborhoods.yml: that file drives the enrichment
+# PIPELINE (which flags each record writes), and it is left unchanged. This file drives the
+# PRODUCT. The pipeline's Woodlawn flag is the whole community area; the product's Woodlawn is
+# the part of it inside Ward 20, computed from the same Silver columns.
+
+ward:
+  ward_id: "20"
+  display_name: "Ward 20"
+  geography_id: ward20
+  source: "City of Chicago — Boundaries - Wards (2023-) (p293-wvbd)"
+  source_dataset_id: p293-wvbd
+  source_vintage: "2023"
+  reference_version: "2026-07-12"
+  notes: >-
+    The ward polygon in force since the 2023 remap (feature edit_date 2022-06-01), as
+    downloaded 2026-07-12 into data/reference/chicago/2026-07-12/wards_current.geojson.
+    Ward 20 covers about 5.2 square miles and intersects nine official community areas.
+
+# Geography types (`kind`) name the boundary SYSTEM a geography comes from. Selectable
+# geographies are not peers from one system, and a statistic's provenance says which:
+#   ward                    the ward polygon itself
+#   community_area_portion  an official community area (igwz-8jzy) clipped to the ward
+#   neighborhood_portion    a neighborhood polygon from a documented neighborhood layer,
+#                           clipped to the ward — none is active; see Back of the Yards
+#
+# Areas a resident can select. Each active one is the official City of Chicago community area
+# (Boundaries - Community Areas, igwz-8jzy, stable since 1920) clipped to Ward 20 — the
+# CURRENT (2023) Ward 20 footprint. EVERY community area that intersects Ward 20 is offered,
+# including the small portions (product decision, 2026-09-13): the drilldowns exist for
+# geographic equity and accountability analysis, and hiding a small portion could conceal a
+# disproportionate pattern. Small portions carry small denominators; the measured
+# `intersection_sq_mi` / shares are published so future analytics can warn about that. No
+# suppression or significance rule is defined here.
+# `share_of_ward_area_pct` / `share_of_area_in_ward_pct` are documentation, not live figures:
+# see `measurement` at the bottom of this file for how and when they were computed.
+areas:
+  - geography_id: woodlawn
+    display_name: Woodlawn
+    kind: community_area_portion
+    community_area: "42"
+    community_area_name: WOODLAWN
+    status: active
+    intersection_sq_mi: 1.040
+    share_of_ward_area_pct: 19.94
+    share_of_area_in_ward_pct: 50.14
+    notes: >-
+      About half of the Woodlawn community area is inside Ward 20 (the rest is largely
+      Ward 5). Figures here are for the Ward 20 half only.
+
+  - geography_id: washington-park
+    display_name: Washington Park
+    kind: community_area_portion
+    community_area: "40"
+    community_area_name: WASHINGTON PARK
+    status: active
+    intersection_sq_mi: 1.203
+    share_of_ward_area_pct: 23.08
+    share_of_area_in_ward_pct: 79.18
+    notes: Most of the Washington Park community area (about 79% by area) is inside Ward 20.
+
+  - geography_id: englewood
+    display_name: Englewood
+    kind: community_area_portion
+    community_area: "68"
+    community_area_name: ENGLEWOOD
+    status: active
+    intersection_sq_mi: 0.705
+    share_of_ward_area_pct: 13.53
+    share_of_area_in_ward_pct: 22.95
+    notes: >-
+      Under a quarter of the Englewood community area is inside Ward 20. Figures here are
+      for that portion only and say nothing about Englewood as a whole.
+
+  - geography_id: fuller-park
+    display_name: Fuller Park
+    kind: community_area_portion
+    community_area: "37"
+    community_area_name: FULLER PARK
+    status: active
+    intersection_sq_mi: 0.488
+    share_of_ward_area_pct: 9.35
+    share_of_area_in_ward_pct: 68.25
+    notes: About two thirds of the Fuller Park community area is inside Ward 20.
+
+  - geography_id: new-city
+    display_name: New City
+    kind: community_area_portion
+    community_area: "61"
+    community_area_name: NEW CITY
+    status: active
+    intersection_sq_mi: 1.264
+    share_of_ward_area_pct: 24.24
+    share_of_area_in_ward_pct: 26.17
+    notes: >-
+      New City is the official community area that contains the Back of the Yards
+      neighborhood. About a quarter of New City is inside Ward 20 — the largest single piece
+      of the ward by area.
+
+  - geography_id: greater-grand-crossing
+    display_name: Greater Grand Crossing
+    kind: community_area_portion
+    community_area: "69"
+    community_area_name: GREATER GRAND CROSSING
+    status: active
+    intersection_sq_mi: 0.324
+    share_of_ward_area_pct: 6.21
+    share_of_area_in_ward_pct: 9.13
+    notes: >-
+      Under a tenth of the Greater Grand Crossing community area is inside Ward 20. Figures
+      here are for that portion only and say nothing about Greater Grand Crossing as a whole.
+
+  - geography_id: hyde-park
+    display_name: Hyde Park
+    kind: community_area_portion
+    community_area: "41"
+    community_area_name: HYDE PARK
+    status: active
+    intersection_sq_mi: 0.090
+    share_of_ward_area_pct: 1.73
+    share_of_area_in_ward_pct: 5.56
+    notes: >-
+      A small strip (about 0.09 sq mi, 5.6% of the community area) of Hyde Park is inside
+      Ward 20. Kept available for equity analysis; counts here will be small.
+
+  - geography_id: grand-boulevard
+    display_name: Grand Boulevard
+    kind: community_area_portion
+    community_area: "38"
+    community_area_name: GRAND BOULEVARD
+    status: active
+    intersection_sq_mi: 0.086
+    share_of_ward_area_pct: 1.64
+    share_of_area_in_ward_pct: 4.92
+    notes: >-
+      A small strip (about 0.09 sq mi, 4.9% of the community area) of Grand Boulevard is
+      inside Ward 20. Kept available for equity analysis; counts here will be small.
+
+  - geography_id: kenwood
+    display_name: Kenwood
+    kind: community_area_portion
+    community_area: "39"
+    community_area_name: KENWOOD
+    status: active
+    intersection_sq_mi: 0.014
+    share_of_ward_area_pct: 0.27
+    share_of_area_in_ward_pct: 1.37
+    notes: >-
+      A very small corner (about 0.014 sq mi, roughly nine acres, 1.4% of the community
+      area) of Kenwood is inside Ward 20. Kept available for equity analysis; counts here
+      will be very small and may be zero in some periods.
+
+  - geography_id: back-of-the-yards
+    display_name: Back of the Yards
+    kind: neighborhood_portion
+    community_area: null
+    community_area_name: null
+    status: pending_boundary
+    represented_by: new-city
+    reason: >-
+      Back of the Yards is a neighborhood name, not an official community area, and the
+      City publishes no boundary that is distinct from New City. In the City's only
+      neighborhood layer (Boundaries - Neighborhoods, Office of Tourism), "Back of the
+      Yards" is a secondary label on polygons identical to the New City (61) and Fuller
+      Park (37) community areas, and the City states those boundaries are approximate and
+      the names not official. Using it would substitute the whole New City community area,
+      which this site does not do. Choose New City for the official geography that contains
+      Back of the Yards.
+    notes: >-
+      Pending a boundary that is both authoritative and distinct from New City. Evaluated
+      2026-09-13 (V2-002A); see `evaluated_source` and docs/methodology/GEOGRAPHY.md.
+    evaluated_source:
+      dataset_name: "Boundaries - Neighborhoods (Office of Tourism, Neighborhoods_2012b)"
+      dataset_id: 9wp7-iasj
+      map_view_id: bbvz-uum9
+      source_url: https://data.cityofchicago.org/download/9wp7-iasj/application/zip
+      retrieved: "2026-09-13"
+      reference_version: "2026-07-12"
+      layer_file: data/reference/chicago/2026-07-12/neighborhoods.geojson
+      portal_updated_at: "2010-12-22T01:00:04+00:00"
+      native_crs: "EPSG:3435 (NAD83 / Illinois East, US survey feet)"
+      geometry_validity: "98 features, 0 repaired, 0 empty, 0 duplicate ids, 0 unexpected overlaps"
+      back_of_the_yards_features:
+        - { pri_neigh: New City, sec_neigh: BACK OF THE YARDS, identical_to_community_area: "61", symmetric_difference_sq_mi: 0.0 }
+        - { pri_neigh: Fuller Park, sec_neigh: BACK OF THE YARDS, identical_to_community_area: "37", symmetric_difference_sq_mi: 0.0 }
+      finding: >-
+        No feature is primarily named Back of the Yards. The two polygons carrying the name
+        as a secondary label are geometrically identical to community areas 61 and 37, so
+        the layer does not define a Back of the Yards boundary distinct from New City.
+
+# Community areas that Ward 20 touches but which are NOT offered as selections. Empty since
+# 2026-09-13: every intersecting community area is offered. The list stays so a future
+# exclusion is disclosed rather than silent. The ward total is computed from the ward polygon
+# alone and is never the sum of the selectable areas.
+other_community_areas_in_ward: []
+
+# How every share above was measured. Reproduce with
+# `uv run python scripts/measure_ward_coverage.py --version 2026-07-12`.
+measurement:
+  method: src/bw_observatory/geography/ward_coverage.py
+  crs: "EPSG:3435 (NAD83 / Illinois East, US survey feet), planar areas"
+  reference_version: "2026-07-12"
+  measured_on: "2026-09-13"
+  ward_sq_mi: 5.214
+  community_area_shares_sum_pct: 100.0

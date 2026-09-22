@@ -14,21 +14,20 @@ from bw_observatory.presentation.incidents import (
     build_incident_page,
 )
 from bw_observatory.presentation.models import IncidentPage
-from bw_observatory.presentation.overview import OverviewDataUnavailable
+from bw_observatory.presentation.overview import OverviewDataUnavailable, resolve_geography
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
 
-BRONZEVILLE_BLOCKED = "Bronzeville is not available: Boundary pending approval."
 _SORT_DIRS = {"asc", "desc"}
 
 
-def _guard_neighborhood(neighborhood_id: str) -> str:
-    requested = neighborhood_id.lower()
-    if requested == "bronzeville":
-        raise HTTPException(status_code=404, detail=BRONZEVILLE_BLOCKED)
-    if requested != "woodlawn":
-        raise HTTPException(status_code=404, detail=f"Unknown neighborhood: {neighborhood_id}")
-    return requested
+def _guard_geography(geography_id: str) -> str:
+    """404 with the reason for an unknown or pending geography — never an empty list, which
+    would read as "no incidents"."""
+    try:
+        return resolve_geography(geography_id).geography_id
+    except OverviewDataUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _validate_sort(sort_by: str, sort_dir: str) -> None:
@@ -38,9 +37,9 @@ def _validate_sort(sort_by: str, sort_dir: str) -> None:
         raise HTTPException(status_code=422, detail="sort_dir must be 'asc' or 'desc'.")
 
 
-@router.get("/{neighborhood_id}", response_model=IncidentPage)
+@router.get("/{geography_id}", response_model=IncidentPage)
 def get_incidents(
-    neighborhood_id: str,
+    geography_id: str,
     year: int = Query(default=2026, ge=2006, le=2100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
@@ -59,12 +58,12 @@ def get_incidents(
     sort_by: str = Query(default="date"),
     sort_dir: str = Query(default="desc"),
 ) -> IncidentPage:
-    """Reported incidents spatially assigned to a neighborhood, newest first by default.
+    """Reported incidents spatially inside a geography, newest first by default.
 
-    Woodlawn only for now. Bronzeville has no approved boundary, so it returns 404 with the
-    reason rather than an empty list — an empty list would read as "no incidents".
+    `geography_id` is Ward 20 overall (`ward20`) or an area within it (see /geographies).
+    A geography with no validated boundary returns 404 with the reason.
     """
-    requested = _guard_neighborhood(neighborhood_id)
+    requested = _guard_geography(geography_id)
     _validate_sort(sort_by, sort_dir)
 
     settings = Settings()
@@ -96,9 +95,9 @@ def get_incidents(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/{neighborhood_id}/export.csv", response_class=PlainTextResponse)
+@router.get("/{geography_id}/export.csv", response_class=PlainTextResponse)
 def export_incidents(
-    neighborhood_id: str,
+    geography_id: str,
     year: int = Query(default=2026, ge=2006, le=2100),
     primary_type: str | None = Query(default=None),
     broad_category: str | None = Query(default=None),
@@ -116,7 +115,7 @@ def export_incidents(
     sort_dir: str = Query(default="desc"),
 ) -> PlainTextResponse:
     """The current filtered result set as CSV — masked block-level, exactly as published."""
-    requested = _guard_neighborhood(neighborhood_id)
+    requested = _guard_geography(geography_id)
     _validate_sort(sort_by, sort_dir)
 
     settings = Settings()
@@ -138,6 +137,7 @@ def export_incidents(
             search=search,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            neighborhood_id=requested,
         )
     except OverviewDataUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,9 +1,9 @@
 """Neighborhood Pulse endpoint. Read-only over Silver + Bronze.
 
 Returns the same-period comparison, broad-category breakdown, beat concentration, category
-drivers, arrest summary, data-derived headline/narrative, and issue cards for one
-neighborhood and year. Missing data returns an honest 404 with the reason — never zeros or
-sample figures.
+drivers, arrest summary, data-derived headline/narrative, and issue cards for one geography
+(Ward 20 overall, or an area within Ward 20) and year. Missing data returns an honest 404
+with the reason — never zeros or sample figures.
 """
 
 from __future__ import annotations
@@ -18,13 +18,13 @@ from bw_observatory.presentation.pulse import build_pulse
 router = APIRouter(prefix="/api/v1/pulse", tags=["pulse"])
 
 
-@router.get("/{neighborhood_id}", response_model=PulseResponse)
+@router.get("/{geography_id}", response_model=PulseResponse)
 def get_pulse(
-    neighborhood_id: str,
+    geography_id: str,
     year: int = Query(default=2026, ge=2006, le=2100),
 ) -> PulseResponse:
     settings = Settings()
     try:
-        return build_pulse(settings.data_dir, year, neighborhood_id.lower())
+        return build_pulse(settings.data_dir, year, geography_id.lower())
     except OverviewDataUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

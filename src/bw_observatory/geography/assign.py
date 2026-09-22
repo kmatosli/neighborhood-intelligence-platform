@@ -24,7 +24,13 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 
-from bw_observatory.geography.models import INTERCHANGE_CRS, GeographyStatus, NeighborhoodStatus
+from bw_observatory.geography.models import (
+    INTERCHANGE_CRS,
+    GeographyStatus,
+    NeighborhoodStatus,
+    SourceStatus,
+)
+from bw_observatory.ingest.bronze import write_frame_atomic
 from bw_observatory.logging_config import download_logger, validation_logger
 
 SILVER_SUBDIR = Path("crime") / "crime_with_geography"
@@ -52,7 +58,13 @@ OUTPUT_COLUMNS = [
     "community_area_mismatch",
     "boundary_vintage",
     "enriched_at",
+    # Source-truth provenance (V2-004A): see `SourceStatus`.
+    "source_status",
+    "source_last_seen",
+    "source_removed_at",
 ]
+
+SOURCE_COLUMNS = ["source_status", "source_last_seen", "source_removed_at"]
 
 QUALITY_COLUMNS = [
     "year",
@@ -215,8 +227,15 @@ class GeographyAssigner:
         assigned = joined[~joined.index.duplicated(keep="first")]["geography_id"]
         return assigned.reindex(points.index).astype("string"), ambiguous_flags
 
-    def enrich(self, bronze: pd.DataFrame, year: int) -> pd.DataFrame:
-        """Enrich one year of Bronze records. Never drops a record."""
+    def enrich(
+        self, bronze: pd.DataFrame, year: int, *, seen_at: str | None = None
+    ) -> pd.DataFrame:
+        """Enrich Bronze records. Never drops a record.
+
+        `seen_at` is when these records were last returned by the source — the download or
+        refresh that produced them. It defaults to now, which is right when enrichment runs
+        straight after a fetch.
+        """
         enriched_at = datetime.now(UTC).isoformat()
         total = len(bronze)
 
@@ -321,6 +340,11 @@ class GeographyAssigner:
 
         frame["boundary_vintage"] = self.vintage
         frame["enriched_at"] = enriched_at
+        frame["source_status"] = pd.Series(SourceStatus.ACTIVE, index=bronze.index, dtype="string")
+        frame["source_last_seen"] = pd.Series(
+            seen_at or enriched_at, index=bronze.index, dtype="string"
+        )
+        frame["source_removed_at"] = pd.Series(pd.NA, index=bronze.index, dtype="string")
 
         return frame[OUTPUT_COLUMNS].reset_index(drop=True)
 
@@ -397,7 +421,21 @@ def upsert_quality_row(silver_dir: Path, row: dict[str, Any]) -> None:
         existing = existing[existing["year"] != row["year"]]
 
     updated = pd.concat([existing, pd.DataFrame([row], columns=QUALITY_COLUMNS)])
-    updated.sort_values("year").reset_index(drop=True).to_parquet(path, index=False)
+    write_frame_atomic(updated.sort_values("year").reset_index(drop=True), path)
+
+
+def bronze_downloaded_at(bronze_dir: Path, year: int) -> str | None:
+    """When the loader last wrote this year — the last moment its rows were seen in the
+    source. None when the manifest cannot say."""
+    manifest = bronze_dir / "manifest.parquet"
+    if not manifest.exists():
+        return None
+    rows = pd.read_parquet(manifest)
+    row = rows[rows["year"] == year]
+    if row.empty:
+        return None
+    completed = row.iloc[0]["download_completed"]
+    return None if pd.isna(completed) else str(completed)
 
 
 def enrich_year(
@@ -415,7 +453,7 @@ def enrich_year(
     bronze = pd.read_parquet(source)
     log.info("Enriching %d: %d Bronze records", year, len(bronze))
 
-    enriched = assigner.enrich(bronze, year)
+    enriched = assigner.enrich(bronze, year, seen_at=bronze_downloaded_at(bronze_dir, year))
 
     if len(enriched) != len(bronze):
         raise RuntimeError(

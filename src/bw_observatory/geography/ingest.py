@@ -127,6 +127,8 @@ def fetch_layer(client: httpx.Client, source: BoundarySource) -> list[dict[str, 
     """Retrieve one layer's features, trying the GeoJSON route then the tabular route."""
     if source.key == "census_block_groups":
         return _fetch_block_groups(client, source)
+    if source.key == "neighborhoods":
+        return _fetch_shapefile_zip(client, source)
     if source.key == "police_districts":
         return _derive_districts_from_beats(client, source)
 
@@ -185,6 +187,27 @@ def _fetch_block_groups(client: httpx.Client, source: BoundarySource) -> list[di
 
     if "COUNTYFP" in frame.columns:
         frame = frame[frame["COUNTYFP"] == COOK_COUNTY_FIPS]
+
+    frame = frame.to_crs(INTERCHANGE_CRS)
+    payload: dict[str, Any] = json.loads(frame.to_json())
+    features: list[dict[str, Any]] = payload["features"]
+    return features
+
+
+def _fetch_shapefile_zip(client: httpx.Client, source: BoundarySource) -> list[dict[str, Any]]:
+    """A portal 'blob' dataset that is a zipped shapefile (no API rows, no GeoJSON route).
+
+    Read verbatim and reprojected to the interchange CRS; attributes are kept as published.
+    """
+    response = _fetch(client, source.source_url)
+
+    with tempfile.TemporaryDirectory() as workspace:
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            archive.extractall(workspace)
+        shapefiles = sorted(Path(workspace).glob("*.shp"))
+        if not shapefiles:
+            return []
+        frame = gpd.read_file(shapefiles[0], engine="pyogrio")
 
     frame = frame.to_crs(INTERCHANGE_CRS)
     payload: dict[str, Any] = json.loads(frame.to_json())

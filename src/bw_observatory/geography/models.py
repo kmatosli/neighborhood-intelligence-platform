@@ -37,6 +37,20 @@ class NeighborhoodStatus:
     BLOCKED = "blocked_pending_approval"
 
 
+class SourceStatus:
+    """Whether a record we hold is still published by the authoritative source.
+
+    `ACTIVE` means the record was returned by the source at `source_last_seen`. `REMOVED`
+    means only that a reconciliation run found the identifier no longer returned — no reason
+    is inferred. Removed records stay in Bronze and Silver as provenance but are excluded
+    from the current analytical view. A year that has never been reconciled carries `ACTIVE`
+    on every row, dated to when the row was ingested.
+    """
+
+    ACTIVE = "active_in_source"
+    REMOVED = "source_removed"
+
+
 @dataclass(frozen=True)
 class BoundarySource:
     """One official boundary layer.

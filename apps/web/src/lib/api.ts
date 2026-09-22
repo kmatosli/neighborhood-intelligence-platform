@@ -39,14 +39,46 @@ export type Provenance = {
   boundary_vintage: string;
   last_refresh: string;
   data_through: string;
+  /** The ward map the figures are measured against, and what place they cover. */
+  ward_source: string;
+  ward_vintage: string;
+  geography_scope: string;
 };
 
+export type GeographyKind = "ward" | "community_area_portion" | "neighborhood_portion";
+
+/** One product geography: Ward 20 overall, or an area within Ward 20. */
 export type NeighborhoodAvailability = {
+  /** The geography id used in URLs and API paths (e.g. "ward20", "woodlawn"). */
   neighborhood_id: string;
   display_name: string;
   available: boolean;
-  /** Why it cannot be shown, e.g. "Boundary pending approval." */
+  /** Why it cannot be shown. Never "0 incidents". */
   reason: string | null;
+  kind: GeographyKind;
+  /** Official community-area number for an area within the ward. */
+  community_area: string | null;
+  /** For a pending neighborhood, the official geography that contains it. */
+  represented_by: string | null;
+};
+
+export type GeographyCatalog = {
+  ward: {
+    ward_id: string;
+    geography_id: string;
+    display_name: string;
+    source: string;
+    source_dataset_id: string;
+    source_vintage: string;
+    notes: string;
+  };
+  default_geography_id: string;
+  geographies: NeighborhoodAvailability[];
+  other_community_areas_in_ward: {
+    community_area: string;
+    community_area_name: string;
+    share_of_ward_area_pct: number | null;
+  }[];
 };
 
 export type EnrichedYears = {
@@ -254,6 +286,27 @@ export async function fetchEnrichedYears(signal?: AbortSignal): Promise<Enriched
   const data = (await response.json()) as EnrichedYears;
   if (!Array.isArray(data.years)) {
     throw new ApiError("The server returned an unexpected list of years.", 500);
+  }
+  return data;
+}
+
+/** The places the API can answer for, with provenance. Never a hardcoded list. */
+export async function fetchGeographies(signal?: AbortSignal): Promise<GeographyCatalog> {
+  const response = await fetch("/api/v1/geographies", {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      `Could not load the list of geographies (${response.status}).`,
+      response.status,
+    );
+  }
+
+  const data = (await response.json()) as GeographyCatalog;
+  if (!Array.isArray(data.geographies) || typeof data.default_geography_id !== "string") {
+    throw new ApiError("The server returned an unexpected list of geographies.", 500);
   }
   return data;
 }

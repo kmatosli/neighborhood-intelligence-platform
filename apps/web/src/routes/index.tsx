@@ -2,11 +2,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { WireShell, DisclosureNote } from "@/components/WireShell";
+import { NotConnectedCard } from "@/components/Pending";
+import { QuestionHeader } from "@/components/QuestionHeader";
 import { IncidentsTable } from "@/components/IncidentsTable";
 import { PulseChart, type ChartMode } from "@/components/PulseChart";
 import { useBrief, type BriefItem } from "@/lib/brief";
+import { useYear } from "@/lib/useYear";
+import { geographyHeadingName, useGeography } from "@/lib/useGeography";
 import {
-  fetchEnrichedYears,
   fetchPulse,
   formatCount,
   formatPercentChange,
@@ -23,107 +26,100 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Neighborhood Pulse — Bronzeville & Woodlawn Watch" },
+      { title: "Neighborhood Pulse — Ward 20 Neighborhood Intelligence" },
       {
         name: "description",
         content:
-          "What changed in Woodlawn, where it changed, who is responsible, and what residents can do next. From the City of Chicago Crimes dataset.",
+          "What changed in Ward 20 and the neighborhoods within it, where it changed, who is responsible, and what residents can do next. From the City of Chicago Crimes dataset.",
       },
     ],
   }),
   component: Overview,
 });
 
-const NEIGHBORHOOD = "woodlawn";
-
 function Overview() {
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
-
-  const yearsQuery = useQuery({
-    queryKey: ["years"],
-    queryFn: ({ signal }) => fetchEnrichedYears(signal),
-    retry: false,
-  });
-
-  const year = selectedYear ?? yearsQuery.data?.latest ?? null;
+  // Year and geography are read from the one canonical place each (the URL's `?year` and
+  // `?geo`, via useYear / useGeography). The shell renders the switchers; this page just
+  // consumes the resolved values.
+  const {
+    year,
+    isLoading: yearsLoading,
+    isError: yearsError,
+    error: yearsErr,
+    isEmpty,
+  } = useYear();
+  const { geographyId, isLoading: geoLoading, isError: geoError, error: geoErr } = useGeography();
 
   const pulseQuery = useQuery({
-    queryKey: ["pulse", NEIGHBORHOOD, year],
-    queryFn: ({ signal }) => fetchPulse(NEIGHBORHOOD, year as number, signal),
-    enabled: year !== null,
+    queryKey: ["pulse", geographyId, year],
+    queryFn: ({ signal }) => fetchPulse(geographyId as string, year as number, signal),
+    enabled: year !== null && geographyId !== null,
     retry: false,
     placeholderData: keepPreviousData,
   });
 
-  const years = yearsQuery.data?.years ?? [];
   const data = pulseQuery.data;
 
-  if (yearsQuery.isLoading) return <LoadingState />;
-  if (yearsQuery.isError) return <ErrorState message={(yearsQuery.error as Error).message} />;
-  if (yearsQuery.data && years.length === 0) {
+  if (yearsLoading || geoLoading) return <LoadingState />;
+  if (yearsError) {
+    return (
+      <ErrorState
+        message={yearsErr?.message ?? "The list of available years could not be loaded."}
+      />
+    );
+  }
+  if (geoError) {
+    return (
+      <ErrorState message={geoErr?.message ?? "The list of geographies could not be loaded."} />
+    );
+  }
+  if (isEmpty) {
     return (
       <ErrorState message="No year has completed geography enrichment yet, so there is nothing to show." />
     );
   }
   if (pulseQuery.isError) return <ErrorState message={(pulseQuery.error as Error).message} />;
-  if (!data || year === null) return <LoadingState />;
+  if (!data || year === null || geographyId === null) return <LoadingState />;
 
-  return (
-    <PulseContent
-      data={data}
-      years={years}
-      selectedYear={year}
-      onSelectYear={setSelectedYear}
-      isUpdating={pulseQuery.isFetching}
-    />
-  );
+  return <PulseContent data={data} isUpdating={pulseQuery.isFetching} />;
 }
 
-function PulseContent({
-  data,
-  years,
-  selectedYear,
-  onSelectYear,
-  isUpdating,
-}: {
-  data: PulseResponse;
-  years: number[];
-  selectedYear: number;
-  onSelectYear: (year: number) => void;
-  isUpdating: boolean;
-}) {
+function PulseContent({ data, isUpdating }: { data: PulseResponse; isUpdating: boolean }) {
   const priorYear = data.year - 1;
   const period = periodLabel(data.year, data.is_year_to_date);
 
   return (
-    <WireShell
-      neighborhood={data.neighborhood_name}
-      dateThrough={data.provenance.data_through}
-      neighborhoods={data.neighborhoods}
-    >
+    <WireShell dateThrough={data.provenance.data_through}>
       {/* 1. Scope */}
       <section aria-labelledby="scope" className="mb-6">
-        <p className="wire-label mb-1">Neighborhood Pulse</p>
-        <h1 id="scope" className="font-serif text-2xl leading-snug sm:text-3xl">
-          What changed in {data.neighborhood_name}
-        </h1>
-        <p className="mt-2 max-w-2xl text-base text-muted-foreground">
-          What changed in your neighborhood, where it changed, who is responsible, and what
-          residents can do next.
-        </p>
-        <p className="mt-2 max-w-2xl rounded-md border bg-accent/40 p-2 text-sm text-muted-foreground">
-          Comparisons on this page use the <strong>same period last year</strong>, so a partial
-          year is never compared with a completed year.
-        </p>
+        <QuestionHeader
+          id="scope"
+          eyebrow="Neighborhood Pulse"
+          question={
+            <>
+              What changed in{" "}
+              {geographyHeadingName(data.neighborhood_name, data.provenance.boundary_type)}
+            </>
+          }
+          lede="What changed in your neighborhood, where it changed, who is responsible, and what residents can do next."
+        >
+          {/* What place the figures cover — the ward, or only the part of an area inside it.
+              This is the one geographic fact a reader must not miss. */}
+          <p className="mt-2 max-w-2xl rounded-md border bg-accent/40 p-2 text-sm text-muted-foreground">
+            {data.provenance.geography_scope} Comparisons use the{" "}
+            <strong>same period last year</strong>, so a partial year is never compared with a
+            completed year.
+          </p>
+        </QuestionHeader>
       </section>
 
-      <YearSelector
-        years={years}
-        selectedYear={selectedYear}
-        onSelectYear={onSelectYear}
-        isYearToDate={data.is_year_to_date}
-        isUpdating={isUpdating}
-      />
+      {/* The year switcher lives in the shell (top of the page). When a new year is loading,
+          say so here rather than swapping the visible figures without warning. */}
+      {isUpdating && (
+        <p role="status" aria-live="polite" className="mb-6 text-base text-muted-foreground">
+          Updating…
+        </p>
+      )}
 
       {/* 2. Headline */}
       <section aria-labelledby="headline" className="mb-8">
@@ -134,8 +130,7 @@ function PulseContent({
         {data.is_year_to_date && (
           <p className="mt-3 rounded-md border bg-caution/20 p-3 text-base" role="note">
             <strong>{data.year} year-to-date.</strong> Figures cover January 1 through{" "}
-            {residentDate(data.provenance.data_through)} and will keep rising as the year
-            continues.
+            {residentDate(data.provenance.data_through)} and will keep rising as the year continues.
           </p>
         )}
         {!data.comparison_available && (
@@ -187,57 +182,6 @@ function PulseContent({
   );
 }
 
-// -- 1. year selector ------------------------------------------------------------------
-
-function YearSelector({
-  years,
-  selectedYear,
-  onSelectYear,
-  isYearToDate,
-  isUpdating = false,
-}: {
-  years: number[];
-  selectedYear: number;
-  onSelectYear: (year: number) => void;
-  isYearToDate: boolean;
-  isUpdating?: boolean;
-}) {
-  return (
-    <div className="mb-6 rounded-lg border bg-card p-4">
-      <label htmlFor="year" className="block text-base font-medium">
-        Year
-      </label>
-      <div className="mt-2 flex items-center gap-3">
-        <select
-          id="year"
-          value={selectedYear}
-          onChange={(event) => onSelectYear(Number(event.target.value))}
-          className="min-h-11 rounded-md border bg-background px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          {years.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
-        {isUpdating && (
-          <span role="status" aria-live="polite" className="text-base text-muted-foreground">
-            Updating…
-          </span>
-        )}
-      </div>
-      <p className="mt-2 text-base text-muted-foreground">
-        Only years the data can fully answer are listed.{" "}
-        {isYearToDate && (
-          <strong>
-            {selectedYear} is a partial year, compared with the same dates a year earlier.
-          </strong>
-        )}
-      </p>
-    </div>
-  );
-}
-
 // -- 3. metric cards -------------------------------------------------------------------
 
 function MetricCards({
@@ -274,8 +218,16 @@ function MetricCards({
             : "Comparison pending"
         }
       />
-      <CategoryCard label="Largest reported increase" category={data.largest_increase} period={comp} />
-      <CategoryCard label="Largest reported decline" category={data.largest_decline} period={comp} />
+      <CategoryCard
+        label="Largest reported increase"
+        category={data.largest_increase}
+        period={comp}
+      />
+      <CategoryCard
+        label="Largest reported decline"
+        category={data.largest_decline}
+        period={comp}
+      />
       <BeatCard beat={data.beat_largest_increase} period={comp} />
       <Card
         label="Arrests reported"
@@ -423,10 +375,11 @@ function ChartSection({ data, priorYear }: { data: PulseResponse; priorYear: num
       </div>
       <DisclosureNote>
         Monthly counts come from the City of Chicago Crimes dataset (
-        {data.provenance.source_dataset_id}). A record is counted as {data.neighborhood_name} only
-        when its published coordinates fall inside the official {data.neighborhood_name}{" "}
-        community-area boundary. Broad categories partition every report into one bucket and are
-        defined in the published methodology. The most recent weeks are usually incomplete.
+        {data.provenance.source_dataset_id}). A record is counted only when its published
+        coordinates fall inside the boundary: {data.provenance.boundary_source}. The ward map is the{" "}
+        {data.provenance.ward_vintage} map, applied to every year so years are comparable. Broad
+        categories partition every report into one bucket and are defined in the published
+        methodology. The most recent weeks are usually incomplete.
       </DisclosureNote>
     </section>
   );
@@ -445,19 +398,29 @@ function BeatConcentrationSection({ data, period }: { data: PulseResponse; perio
         Where incidents concentrate
       </h2>
       <p className="mt-1 text-base text-muted-foreground">
-        Reported incidents by police beat in {data.neighborhood_name}, {period}. A larger share
-        does not by itself measure police performance.
+        Reported incidents by police beat in {data.neighborhood_name}, {period}. A larger share does
+        not by itself measure police performance.
       </p>
       <div className="mt-3 overflow-x-auto rounded-lg border bg-card">
         <table className="w-full min-w-[40rem] text-base">
           <caption className="sr-only">Reported incidents by beat, {period}</caption>
           <thead>
             <tr className="border-b text-left">
-              <th scope="col" className="px-3 py-2 text-center">Beat</th>
-              <th scope="col" className="px-3 py-2">This period</th>
-              <th scope="col" className="px-3 py-2 text-right">Reports</th>
-              <th scope="col" className="px-3 py-2 text-right">Share</th>
-              <th scope="col" className="px-3 py-2 text-right">Change</th>
+              <th scope="col" className="px-3 py-2 text-center">
+                Beat
+              </th>
+              <th scope="col" className="px-3 py-2">
+                This period
+              </th>
+              <th scope="col" className="px-3 py-2 text-right">
+                Reports
+              </th>
+              <th scope="col" className="px-3 py-2 text-right">
+                Share
+              </th>
+              <th scope="col" className="px-3 py-2 text-right">
+                Change
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -467,7 +430,10 @@ function BeatConcentrationSection({ data, period }: { data: PulseResponse; perio
                   {b.beat_display}
                 </th>
                 <td className="px-3 py-2">
-                  <div className="h-3 rounded-sm bg-primary/80" style={{ width: `${(b.current / max) * 100}%`, minWidth: 4 }} />
+                  <div
+                    className="h-3 rounded-sm bg-primary/80"
+                    style={{ width: `${(b.current / max) * 100}%`, minWidth: 4 }}
+                  />
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCount(b.current)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{Math.round(b.share * 100)}%</td>
@@ -530,8 +496,12 @@ function DriverTableSection({
           <caption className="sr-only">Crime types by change, {period}</caption>
           <thead>
             <tr className="border-b text-left">
-              <th scope="col" className="px-3 py-2">Crime type</th>
-              <th scope="col" className="px-3 py-2">Broad category</th>
+              <th scope="col" className="px-3 py-2">
+                Crime type
+              </th>
+              <th scope="col" className="px-3 py-2">
+                Broad category
+              </th>
               {header("current", "This period")}
               {header("prior", "Prior period")}
               {header("absolute_change", "Change")}
@@ -541,14 +511,20 @@ function DriverTableSection({
           <tbody>
             {sorted.map((d) => (
               <tr key={d.primary_type} className="border-b last:border-0">
-                <th scope="row" className="px-3 py-2 font-normal">{d.primary_type}</th>
+                <th scope="row" className="px-3 py-2 font-normal">
+                  {d.primary_type}
+                </th>
                 <td className="px-3 py-2 text-muted-foreground">{d.broad_label}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCount(d.current)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {d.prior !== null ? formatCount(d.prior) : "—"}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatSignedCount(d.absolute_change)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatPercentChange(d.percent_change)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {formatSignedCount(d.absolute_change)}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {formatPercentChange(d.percent_change)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -673,11 +649,8 @@ function BeatMeetingCta() {
             Prepare for my beat meeting
           </h2>
           <p className="mt-1 text-base text-muted-foreground">
-            A printable one-page brief with what changed, questions to ask, and who is
-            responsible.{" "}
-            {brief.items.length > 0 && (
-              <strong>{brief.items.length} issue(s) ready.</strong>
-            )}
+            A printable one-page brief with what changed, questions to ask, and who is responsible.{" "}
+            {brief.items.length > 0 && <strong>{brief.items.length} issue(s) ready.</strong>}
           </p>
         </div>
         <Link
@@ -714,11 +687,7 @@ function CommunityChangeContext() {
       </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {COMING_SOON.map((item) => (
-          <div key={item.label} className="rounded-lg border border-dashed bg-card/50 p-4">
-            <h3 className="text-base font-medium">{item.label}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Data source not yet connected.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Intended source: {item.source}.</p>
-          </div>
+          <NotConnectedCard key={item.label} label={item.label} source={item.source} />
         ))}
       </div>
     </section>
@@ -736,8 +705,8 @@ function DataTrust({ data, period }: { data: PulseResponse; period: string }) {
       </h2>
       <ul className="mt-2 space-y-1 text-base text-muted-foreground">
         <li>
-          Source: {data.provenance.source_dataset_name} ({data.provenance.source_dataset_id}),
-          City of Chicago. Last refreshed {data.provenance.last_refresh}. Data through{" "}
+          Source: {data.provenance.source_dataset_name} ({data.provenance.source_dataset_id}), City
+          of Chicago. Last refreshed {data.provenance.last_refresh}. Data through{" "}
           {residentDate(data.provenance.data_through)} ({period}).
         </li>
         <li>
@@ -749,15 +718,22 @@ function DataTrust({ data, period }: { data: PulseResponse; period: string }) {
           Records with coordinates outside Chicago: {formatCount(q.records_outside_boundaries)}.
           Unusable coordinates: {formatCount(q.records_invalid_coordinates)}.
         </li>
-        <li>Raw-data integrity check: {q.bronze_integrity_verified ? "verified" : "not verified"}.</li>
         <li>
-          Reports are not convictions, records may be revised after publication, and exact
-          addresses are masked to the block. Neighborhoods (community areas) differ from wards,
-          police beats, and census tracts.
+          Raw-data integrity check: {q.bronze_integrity_verified ? "verified" : "not verified"}.
         </li>
         <li>
-          Bronzeville is not shown: its boundary is pending approval, and its absence is not a
-          count of zero.
+          Geography: {data.provenance.geography_scope} Boundary source:{" "}
+          {data.provenance.boundary_source}({data.provenance.ward_vintage} ward map). A neighborhood
+          figure here is never the figure for the whole community area.
+        </li>
+        <li>
+          Reports are not convictions, records may be revised after publication, and exact addresses
+          are masked to the block. Wards, community areas, police beats, and census tracts are
+          different boundaries.
+        </li>
+        <li>
+          A neighborhood without a validated boundary is shown as unavailable, and its absence is
+          not a count of zero.
         </li>
       </ul>
     </section>
@@ -770,7 +746,7 @@ function LoadingState() {
   return (
     <WireShell>
       <div role="status" aria-live="polite" className="py-12 text-center">
-        <p className="font-serif text-xl">Loading Woodlawn data…</p>
+        <p className="font-serif text-xl">Loading Ward 20 data…</p>
         <p className="mt-2 text-base text-muted-foreground">
           Reading reported incidents from the Chicago Crimes dataset.
         </p>
