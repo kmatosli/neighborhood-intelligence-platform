@@ -15,9 +15,19 @@ const PAGE_SIZES = [25, 50, 100];
 
 /** Raw CPD crime types offered in the filter. From what the city actually publishes. */
 const CRIME_TYPES = [
-  "BATTERY", "THEFT", "CRIMINAL DAMAGE", "ASSAULT", "MOTOR VEHICLE THEFT", "BURGLARY",
-  "ROBBERY", "WEAPONS VIOLATION", "DECEPTIVE PRACTICE", "CRIMINAL TRESPASS", "NARCOTICS",
-  "OTHER OFFENSE", "HOMICIDE",
+  "BATTERY",
+  "THEFT",
+  "CRIMINAL DAMAGE",
+  "ASSAULT",
+  "MOTOR VEHICLE THEFT",
+  "BURGLARY",
+  "ROBBERY",
+  "WEAPONS VIOLATION",
+  "DECEPTIVE PRACTICE",
+  "CRIMINAL TRESPASS",
+  "NARCOTICS",
+  "OTHER OFFENSE",
+  "HOMICIDE",
 ]; // fmt: skip
 
 /** Broad, resident-facing categories — the partition defined in the methodology config. */
@@ -59,14 +69,54 @@ type Column = {
 };
 
 const COLUMNS: Column[] = [
-  { key: "date", label: "Date and time", sortBy: "date", align: "left", render: (r, h) => formatDateTime(r.date, h) },
-  { key: "block", label: "Block", sortBy: "block", align: "left", render: (r) => r.block ?? "not published" },
-  { key: "type", label: "Crime type", sortBy: "primary_type", align: "center", render: (r) => r.primary_type ?? "not published" },
-  { key: "desc", label: "Description", align: "left", render: (r) => r.description ?? "not published" },
-  { key: "loc", label: "Location", align: "left", render: (r) => r.location_description ?? "not published" },
-  { key: "arrest", label: "Arrest", sortBy: "arrest", align: "center", render: (r) => (r.arrest === null ? "not published" : r.arrest ? "Yes" : "No") },
+  {
+    key: "date",
+    label: "Date and time",
+    sortBy: "date",
+    align: "left",
+    render: (r, h) => formatDateTime(r.date, h),
+  },
+  {
+    key: "block",
+    label: "Block",
+    sortBy: "block",
+    align: "left",
+    render: (r) => r.block ?? "not published",
+  },
+  {
+    key: "type",
+    label: "Crime type",
+    sortBy: "primary_type",
+    align: "center",
+    render: (r) => r.primary_type ?? "not published",
+  },
+  {
+    key: "desc",
+    label: "Description",
+    align: "left",
+    render: (r) => r.description ?? "not published",
+  },
+  {
+    key: "loc",
+    label: "Location",
+    align: "left",
+    render: (r) => r.location_description ?? "not published",
+  },
+  {
+    key: "arrest",
+    label: "Arrest",
+    sortBy: "arrest",
+    align: "center",
+    render: (r) => (r.arrest === null ? "not published" : r.arrest ? "Yes" : "No"),
+  },
   { key: "beat", label: "Beat", sortBy: "beat", align: "center", render: (r) => r.beat ?? "—" },
-  { key: "district", label: "District", sortBy: "district", align: "center", render: (r) => r.district ?? "—" },
+  {
+    key: "district",
+    label: "District",
+    sortBy: "district",
+    align: "center",
+    render: (r) => r.district ?? "—",
+  },
   { key: "ward", label: "Ward", sortBy: "ward", align: "center", render: (r) => r.ward ?? "—" },
 ];
 
@@ -140,9 +190,9 @@ export function IncidentsTable({
         Supporting evidence: reported incidents
       </h2>
       <p className="mt-1 text-base text-muted-foreground">
-        Individual reported incidents from the City of Chicago Crimes dataset spatially assigned
-        to {neighborhoodName}. Reports are not convictions. Locations are block-level; exact
-        addresses are never shown.
+        Individual reported incidents from the City of Chicago Crimes dataset spatially assigned to{" "}
+        {neighborhoodName}. Reports are not convictions. Locations are block-level; exact addresses
+        are never shown.
       </p>
 
       {/* Filters */}
@@ -178,12 +228,16 @@ export function IncidentsTable({
             <select
               id="f-broad"
               value={draft.broad_category ?? ""}
-              onChange={(e) => applyFilters({ ...draft, broad_category: e.target.value || undefined })}
+              onChange={(e) =>
+                applyFilters({ ...draft, broad_category: e.target.value || undefined })
+              }
               className={inputClass}
             >
               <option value="">All categories</option>
               {BROAD_CATEGORIES.map((c) => (
-                <option key={c.key} value={c.key}>{c.label}</option>
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
               ))}
             </select>
           </Field>
@@ -191,12 +245,16 @@ export function IncidentsTable({
             <select
               id="f-type"
               value={draft.primary_type ?? ""}
-              onChange={(e) => applyFilters({ ...draft, primary_type: e.target.value || undefined })}
+              onChange={(e) =>
+                applyFilters({ ...draft, primary_type: e.target.value || undefined })
+              }
               className={inputClass}
             >
               <option value="">All types</option>
               {CRIME_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t}
+                </option>
               ))}
             </select>
           </Field>
@@ -229,7 +287,10 @@ export function IncidentsTable({
               id="f-arrest"
               value={draft.arrest ?? ""}
               onChange={(e) =>
-                applyFilters({ ...draft, arrest: (e.target.value || undefined) as IncidentFilters["arrest"] })
+                applyFilters({
+                  ...draft,
+                  arrest: (e.target.value || undefined) as IncidentFilters["arrest"],
+                })
               }
               className={inputClass}
             >
@@ -269,7 +330,10 @@ export function IncidentsTable({
         {chips.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2" aria-label="Active filters">
             {chips.map((chip) => (
-              <span key={chip.k} className="inline-flex items-center gap-1 rounded-full border bg-accent/50 px-3 py-1 text-sm">
+              <span
+                key={chip.k}
+                className="inline-flex items-center gap-1 rounded-full border bg-accent/50 px-3 py-1 text-sm"
+              >
                 {chip.k.replace(/_/g, " ")}: {chip.v}
                 <button
                   type="button"
@@ -302,8 +366,14 @@ export function IncidentsTable({
         <>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <p className="text-base text-muted-foreground" aria-live="polite">
-              {formatCount(data.total_records)} matching incident{data.total_records === 1 ? "" : "s"} in {year}
-              {data.total_pages > 0 && <> · page {data.page} of {formatCount(data.total_pages)}</>}
+              {formatCount(data.total_records)} matching incident
+              {data.total_records === 1 ? "" : "s"} in {year}
+              {data.total_pages > 0 && (
+                <>
+                  {" "}
+                  · page {data.page} of {formatCount(data.total_pages)}
+                </>
+              )}
               {query.isFetching && <span className="ml-2">Updating…</span>}
             </p>
             <div className="flex items-center gap-3 text-sm">
@@ -318,7 +388,9 @@ export function IncidentsTable({
                   className="min-h-11 rounded-md border bg-background px-2 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {PAGE_SIZES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -331,6 +403,23 @@ export function IncidentsTable({
               </a>
             </div>
           </div>
+
+          {(data.excluded_by_published_field_filters ?? 0) > 0 && (
+            <p
+              role="note"
+              className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-base"
+            >
+              <strong>
+                {formatCount(data.excluded_by_published_field_filters ?? 0)} further incident
+                {(data.excluded_by_published_field_filters ?? 0) === 1 ? " is" : "s are"} mapped to
+                this {(data.published_field_filters ?? []).join(" and ")} but not counted here.
+              </strong>{" "}
+              This filter matches the {(data.published_field_filters ?? []).join(" and ")} value CPD
+              printed on each record, while the map places the record by its published coordinates.
+              Those coordinates are masked to the block, so the two disagree for a minority of
+              records. Clear the filter to see every incident in the area.
+            </p>
+          )}
 
           {data.records.length === 0 ? (
             <p role="status" className="mt-3 rounded-md border bg-card p-4 text-base">
@@ -365,7 +454,11 @@ export function IncidentsTable({
                             className="inline-flex min-h-11 items-center gap-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
                             {col.label}
-                            {sort.sort_by === col.sortBy ? (sort.sort_dir === "asc" ? " ↑" : " ↓") : ""}
+                            {sort.sort_by === col.sortBy
+                              ? sort.sort_dir === "asc"
+                                ? " ↑"
+                                : " ↓"
+                              : ""}
                           </button>
                         ) : (
                           col.label
@@ -383,7 +476,11 @@ export function IncidentsTable({
                           className={`max-w-[16rem] truncate px-3 py-2 ${
                             col.align === "center" ? "text-center tabular-nums" : "text-left"
                           } ${col.key === "date" ? "whitespace-nowrap" : ""}`}
-                          title={typeof col.render(record, hour24) === "string" ? String(col.render(record, hour24)) : undefined}
+                          title={
+                            typeof col.render(record, hour24) === "string"
+                              ? String(col.render(record, hour24))
+                              : undefined
+                          }
                         >
                           {col.render(record, hour24)}
                         </td>
@@ -396,7 +493,10 @@ export function IncidentsTable({
           )}
 
           {totalPages > 1 && (
-            <nav aria-label="Incident pages" className="mt-3 flex items-center justify-between gap-3">
+            <nav
+              aria-label="Incident pages"
+              className="mt-3 flex items-center justify-between gap-3"
+            >
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -429,7 +529,15 @@ const inputClass =
 const buttonClass =
   "min-h-11 rounded-md border bg-background px-4 py-2 text-base hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={htmlFor} className="block text-base">

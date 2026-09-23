@@ -166,6 +166,8 @@ def _write(root: Path, year: int, rows: list[tuple[Any, ...]]) -> None:
                 "neighborhood_bronzeville": None,
                 "boundary_vintage": "community_area:1920;ward:2023",
                 "geography_status": "assigned",
+                "spatial_beat_current": r[4],
+                "spatial_district_current": "003",
                 "beat_mismatch": r[7],
                 "ward_mismatch": r[0] == "r4",
                 "community_area_mismatch": False,
@@ -296,6 +298,25 @@ def test_pulse_publishes_measurement_notes(data_dir: Path) -> None:
 
 
 # -- published-field filtering is never silent ------------------------------------------
+
+
+def test_published_field_filter_counts_only_frame_disagreement_not_the_whole_filter(
+    data_dir: Path,
+) -> None:
+    """A beat filter removes other beats by design; only the frame mismatch is worth surfacing.
+
+    r4 sits in beat 0313 by CPD's published field. Filtering to beat 0313 removes every 0321
+    record — which is the filter working — so none of those may be reported as an exclusion.
+    """
+    page = build_incident_page(data_dir, 2026, neighborhood_id="ward20", beat="313")
+    assert page.published_field_filters == ["beat"]
+    # Every record inside Ward 20 whose mapped beat is 0313 also carries 0313 as published, so
+    # there is no disagreement to report even though the filter removed the 0321 records.
+    assert page.excluded_by_published_field_filters == 0
+    assert (
+        page.total_records
+        < build_incident_page(data_dir, 2026, neighborhood_id="ward20").total_records
+    )
 
 
 def test_published_field_filter_reports_the_rows_it_excluded(data_dir: Path) -> None:

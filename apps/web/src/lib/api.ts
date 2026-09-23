@@ -200,6 +200,14 @@ export type IncidentPage = {
   page_size: number;
   total_pages: number;
   records: IncidentRecord[];
+  /**
+   * Which of `ward` / `district` / `beat` were applied. These match the fields CPD publishes on
+   * a record, while the records themselves were selected by point-in-polygon, so applying one
+   * can remove records that ARE inside the geography.
+   */
+  published_field_filters?: string[];
+  /** How many in-geography rows the published-field filters removed. Never left unshown. */
+  excluded_by_published_field_filters?: number;
 };
 
 export type IncidentFilters = {
