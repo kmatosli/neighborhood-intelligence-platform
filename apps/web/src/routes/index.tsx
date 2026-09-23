@@ -4,12 +4,14 @@ import { useState } from "react";
 import { WireShell, DisclosureNote } from "@/components/WireShell";
 import { NotConnectedCard } from "@/components/Pending";
 import { QuestionHeader } from "@/components/QuestionHeader";
+import { IntelligenceBrief } from "@/components/IntelligenceBrief";
 import { IncidentsTable } from "@/components/IncidentsTable";
 import { PulseChart, type ChartMode } from "@/components/PulseChart";
 import { useBrief, type BriefItem } from "@/lib/brief";
 import { useYear } from "@/lib/useYear";
 import { geographyHeadingName, useGeography } from "@/lib/useGeography";
 import {
+  fetchFindings,
   fetchFreshness,
   fetchPulse,
   formatCount,
@@ -21,6 +23,7 @@ import {
   type BeatConcentration,
   type BroadCategoryChange,
   type CrimeFreshness,
+  type FindingsResponse,
   type IssueCard as IssueCardData,
   type MeasurementNotes,
   type PrimaryTypeChange,
@@ -70,6 +73,14 @@ function Overview() {
 
   // How current the data is. A failure here must never hide the page: the banner simply does
   // not render, because a missing freshness check is not a reason to withhold the figures.
+  const findingsQuery = useQuery({
+    queryKey: ["findings", geographyId, year],
+    queryFn: ({ signal }) => fetchFindings(geographyId as string, year as number, signal),
+    enabled: year !== null && geographyId !== null,
+    retry: false,
+    placeholderData: keepPreviousData,
+  });
+
   const freshnessQuery = useQuery({
     queryKey: ["freshness"],
     queryFn: ({ signal }) => fetchFreshness(signal),
@@ -106,6 +117,7 @@ function Overview() {
       isUpdating={pulseQuery.isFetching}
       freshness={freshnessQuery.data ?? null}
       areaShare={geography?.share_of_area_in_ward_pct ?? null}
+      brief={findingsQuery.data ?? null}
     />
   );
 }
@@ -115,12 +127,15 @@ function PulseContent({
   isUpdating,
   freshness,
   areaShare,
+  brief,
 }: {
   data: PulseResponse;
   isUpdating: boolean;
   freshness: CrimeFreshness | null;
   /** Percent of the community area's AREA inside Ward 20 — an area share, not an incident share. */
   areaShare: number | null;
+  /** The published brief. Null while loading or if it could not be built. */
+  brief: FindingsResponse | null;
 }) {
   const priorYear = data.year - 1;
   const period = periodLabel(data.year, data.is_year_to_date);
@@ -167,7 +182,10 @@ function PulseContent({
         </p>
       )}
 
-      {/* 2. Headline */}
+      {/* 2. The brief — the published conclusions, ahead of the supporting figures. */}
+      {brief && <IntelligenceBrief brief={brief} />}
+
+      {/* 3. Headline */}
       <section aria-labelledby="headline" className="mb-8">
         <p className="wire-label mb-2">The headline</p>
         <h2 id="headline" className="font-serif text-xl leading-snug sm:text-2xl">

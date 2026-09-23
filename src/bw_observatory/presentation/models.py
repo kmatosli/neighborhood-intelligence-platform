@@ -308,6 +308,81 @@ class MeasurementNotes(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class FindingEvidence(BaseModel):
+    """One number behind a finding, with the period it covers."""
+
+    label: str
+    value: str
+    period: str | None = None
+
+
+class Finding(BaseModel):
+    """A published conclusion, or an explicit statement that a domain has no data.
+
+    Every field a reader needs to judge the claim travels with it: what place and period it
+    covers, what it is compared against, where the number came from, how fresh it is, what it
+    does not establish, and where to see the working.
+    """
+
+    id: str
+    topic: str
+    subtopic: str | None = None
+    #: verified_finding | change_alert | research_question | data_gap
+    classification: str
+    headline: str
+    observation: str
+
+    evidence: list[FindingEvidence] = Field(default_factory=list)
+    #: What is missing, for a data gap or an unanswerable question.
+    missing: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+    geography_id: str | None = None
+    geography_label: str | None = None
+    #: Percent of the community area's AREA inside Ward 20, when the finding covers a portion.
+    geography_area_share_pct: float | None = None
+    reporting_period: str | None = None
+    comparison_period: str | None = None
+
+    source_dataset_id: str | None = None
+    data_through: str | None = None
+    #: True when the period is still filling in, so the figure may move.
+    provisional: bool = False
+    #: True when the figures include categories that track police activity.
+    enforcement_sensitive: bool = False
+
+    calculation: str | None = None
+    destination_route: str | None = None
+    destination_anchor: str | None = None
+    #: Query parameters a link must carry so the evidence opens in the same state.
+    destination_params: dict[str, str] = Field(default_factory=dict)
+
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+
+
+class FindingsResponse(BaseModel):
+    """The Overview brief for one geography and year."""
+
+    geography_id: str
+    geography_label: str
+    year: int
+    #: The release the numbers were computed from, so an archived brief can be reproduced.
+    data_release: str | None = None
+    data_through: str
+    freshness_status: str | None = None
+    generated_at: str
+
+    lead: list[Finding]
+    by_domain: list[Finding]
+    neighborhood_differences: list[Finding]
+    questions: list[Finding]
+    data_gaps: list[Finding]
+
+    #: Findings that were defined but withheld, and why — never silently dropped.
+    withheld: list[str] = Field(default_factory=list)
+
+
 class PulseResponse(BaseModel):
     neighborhood_id: str
     neighborhood_name: str

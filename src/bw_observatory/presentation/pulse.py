@@ -101,8 +101,18 @@ def same_period_cutoff(through: date, prior_year: int) -> date:
 
 
 def _within(records: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Records from `start` through the WHOLE of `end`.
+
+    `end` is a date, and incident timestamps carry a time of day, so comparing against
+    `Timestamp(end)` — midnight — silently dropped every record on the final day. That
+    understated the prior period: the 2024 comparison for Ward 20 lost the 24 records dated
+    31 December and reported 8,191 against the true 8,215, making the 2025 change look like
+    -4.6% instead of -4.8%. The end day is inclusive, which is also what a reader means by
+    "through 31 December".
+    """
     when = records["_when"]
-    return records[(when >= pd.Timestamp(start)) & (when <= pd.Timestamp(end))]
+    last_moment = pd.Timestamp(end) + pd.Timedelta(days=1)
+    return records[(when >= pd.Timestamp(start)) & (when < last_moment)]
 
 
 def _pct_change(current: int, prior: int | None) -> float | None:

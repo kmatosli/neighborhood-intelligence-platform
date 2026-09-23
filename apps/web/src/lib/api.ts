@@ -573,3 +573,114 @@ export async function fetchFreshness(signal?: AbortSignal): Promise<CrimeFreshne
 export function isStaleStatus(status: string): boolean {
   return status !== "current";
 }
+
+// ==========================================================================================
+// Overview findings — the Neighborhood Intelligence Brief
+// ==========================================================================================
+
+export type FindingClassification =
+  "verified_finding" | "change_alert" | "research_question" | "data_gap";
+
+export type FindingEvidence = { label: string; value: string; period: string | null };
+
+/**
+ * A published conclusion, or an explicit statement that a domain has no data. Everything a
+ * reader needs to judge the claim travels with it, so a finding can never appear as a bare
+ * assertion.
+ */
+export type Finding = {
+  id: string;
+  topic: string;
+  subtopic: string | null;
+  classification: FindingClassification;
+  headline: string;
+  observation: string;
+  evidence: FindingEvidence[];
+  /** What is missing, for a data gap or an unanswerable question. */
+  missing: string[];
+  limitations: string[];
+  geography_id: string | null;
+  geography_label: string | null;
+  geography_area_share_pct: number | null;
+  reporting_period: string | null;
+  comparison_period: string | null;
+  source_dataset_id: string | null;
+  data_through: string | null;
+  /** The period is still filling in, so the figure may move. */
+  provisional: boolean;
+  /** The figures include categories that track police activity rather than behaviour. */
+  enforcement_sensitive: boolean;
+  calculation: string | null;
+  destination_route: string | null;
+  destination_anchor: string | null;
+  destination_params: Record<string, string>;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+};
+
+export type FindingsResponse = {
+  geography_id: string;
+  geography_label: string;
+  year: number;
+  /** The data release the numbers came from, so an archived brief is reproducible. */
+  data_release: string | null;
+  data_through: string;
+  freshness_status: string | null;
+  generated_at: string;
+  lead: Finding[];
+  by_domain: Finding[];
+  neighborhood_differences: Finding[];
+  questions: Finding[];
+  data_gaps: Finding[];
+  /** Findings defined but withheld, and why — never silently dropped. */
+  withheld: string[];
+};
+
+export async function fetchFindings(
+  geographyId: string,
+  year: number,
+  signal?: AbortSignal,
+): Promise<FindingsResponse> {
+  const response = await fetch(`/api/v1/findings?geo=${geographyId}&year=${year}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    let detail = `The brief could not be loaded (${response.status}).`;
+    try {
+      const body = (await response.json()) as { detail?: string };
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Not JSON. Keep the status-based message rather than inventing one.
+    }
+    throw new ApiError(detail, response.status);
+  }
+  const data = (await response.json()) as FindingsResponse;
+  if (!Array.isArray(data.lead) || !Array.isArray(data.data_gaps)) {
+    throw new ApiError("The server returned an unexpected brief.", 500);
+  }
+  return data;
+}
+
+/** Resident-facing label for a finding's classification. */
+export function classificationLabel(classification: FindingClassification): string {
+  switch (classification) {
+    case "verified_finding":
+      return "Verified finding";
+    case "change_alert":
+      return "Change to watch";
+    case "research_question":
+      return "Open question";
+    case "data_gap":
+      return "No data yet";
+  }
+}
+
+/** The link that opens a finding's supporting evidence in the same geography, year and filters. */
+export function findingHref(finding: Finding): string | null {
+  if (!finding.destination_route) return null;
+  const params = new URLSearchParams(finding.destination_params);
+  const query = params.toString();
+  const anchor = finding.destination_anchor ? `#${finding.destination_anchor}` : "";
+  return `${finding.destination_route}${query ? `?${query}` : ""}${anchor}`;
+}

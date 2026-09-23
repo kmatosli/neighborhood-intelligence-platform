@@ -240,6 +240,36 @@ production disk. Version 2 proceeds in numbered work packages.
     Beat Meeting, Community Change and Civic Accountability remain placeholders (D9); catalogue
     features CA-02 … CA-19 remain pending owner review.
 
+- **V2-007 — Neighborhood Intelligence Brief (findings infrastructure).** Implemented
+  2026-09-23 (local; not pushed, not deployed). The Overview now opens with the conclusions the
+  data supports, ahead of the figures that support them.
+  - **Findings are configuration, not code.** `config/findings.yml` holds each conclusion's
+    reviewed wording, limitations, classification, destination and review metadata;
+    `presentation/findings.py` holds the arithmetic. No number is typed into config and no
+    sentence is generated at request time, so a published figure can always be recomputed.
+  - **Classification is always visible:** `verified_finding`, `change_alert`,
+    `research_question`, `data_gap`. A domain with no ingested data publishes a gap that says
+    what is missing and shows no figure — People & Housing, City Services, Economic Conditions
+    (including jobs and unemployment) and Public Investment are all gaps today.
+  - **Four calculations** ship, all Public Safety: overall same-period change, the largest
+    contributing crime type, the enforcement-generated share, and the distribution across the
+    ward's community-area portions. Ward 20 2025 publishes 7,817 against 8,215 (−398, −4.8%).
+  - **Suppression is visible.** A finding whose comparison period is too small (`min_prior`), or
+    whose calculation cannot run, is listed in `withheld` with the reason rather than vanishing.
+  - **Reproducibility.** Each brief records the data release, `data_through` and generation time,
+    and every finding carries its geography, period, comparison, source dataset, freshness,
+    provisional flag and limitations. Deep links preserve `geo` and `year` and target a specific
+    anchor.
+  - `/api/v1/findings?geo=&year=`; UI in `apps/web/src/components/IntelligenceBrief.tsx`.
+  - **Defect fixed on the way:** the same-period comparison excluded the final day of the prior
+    period, because incident timestamps carry a time of day and the window compared against
+    midnight. Ward 20's 2024 comparison read 8,191 instead of 8,215, publishing −4.6% where the
+    true change is −4.8%. `_within` is now inclusive of the end day, with a regression test.
+  - Tests: 14 new in `tests/test_findings.py`; suite 258 passing. Ruff, mypy, tsc, prettier and
+    the frontend build clean; the brief was rendered in a browser against the September release.
+  - Only CA-01, CA-11 and CA-17 from the analytics catalogue are implemented (in V2-006).
+    CA-02 … CA-19 remain pending owner review and none is approved.
+
 ## Next feature
 
 ~~**Incremental refresh using `updated_on` and `id`**~~ — done in V2-004 (2026-09-14);
