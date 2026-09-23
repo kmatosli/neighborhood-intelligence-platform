@@ -1,0 +1,226 @@
+# Overview findings — the Neighborhood Intelligence Brief's published conclusions.
+#
+# WHAT THIS FILE IS. Every conclusion the Overview publishes is defined here and nowhere else.
+# A finding pairs reviewed wording with the id of a calculation in
+# `src/bw_observatory/presentation/findings.py`. The numbers come from the calculation; the
+# sentence comes from this file. Nothing is written by a language model at request time, and no
+# number is typed in by hand — a published figure that does not match a recomputation fails its
+# test, which is what makes these findings reproducible rather than merely plausible.
+#
+# WHY WORDING IS CONFIG. Deciding that a movement is worth telling residents about, and in what
+# words, is an editorial judgement. It belongs in a reviewed file, in version control, beside
+# the limitations it must carry — not inside a React component.
+#
+# HOW TO PUBLISH ONE.
+#   1. The calculation exists in `presentation/findings.py` with a test asserting its value.
+#   2. The finding is added here with `status: draft`. Draft findings are never served.
+#   3. A reviewer re-runs the calculation independently and checks the geography label, the
+#      period comparability, the baseline, the limitations and the classification.
+#   4. `status` becomes `published` in a commit, so publication is attributable and reversible.
+#   5. CI recomputes every published finding. A mismatch demotes it rather than letting the
+#      figure drift silently.
+#
+# CLASSIFICATION is one of:
+#   verified_finding  — computed, reviewed, and safe to state as fact.
+#   change_alert      — a movement worth attention that is NOT yet established as a trend.
+#   research_question — a question the available data cannot answer.
+#   data_gap          — a domain with no ingested data. It says what is missing and why, and
+#                       never a figure.
+#
+# WORDING SLOTS are filled from the calculation's values, e.g. {total} or {direction}. Where a
+# sentence changes with the direction of a movement, every direction it can take is written out
+# below and reviewed, so the platform can never invent a phrasing.
+#
+# SUPPRESSION. A finding with `min_prior` is withheld when the comparison period is too small
+# for a percentage to mean anything, and says so instead of publishing an unstable number.
+
+findings:
+  # -- Public Safety: the only domain with ingested, validated data -----------------------
+  - id: F-001
+    topic: public_safety
+    subtopic: overall_trend
+    classification: verified_finding
+    calculation: overall_change
+    min_prior: 100
+    headline:
+      up: "Reported crime is higher than the same period last year, but the movement is uneven across crime types."
+      down: "Reported crime is lower than the same period last year, but the decline is uneven across crime types."
+      flat: "Reported crime is close to the same period last year."
+    observation: >-
+      {geography} recorded {total} reported incidents in {period}, against {prior_total} in
+      {comparison_period} — {change_phrase}. A single total hides offsetting movements, so the
+      crime types behind it are worth reading before drawing any conclusion.
+    limitations:
+      - These are incidents reported to police, not convictions, and not all crime is reported.
+      - The City revises published records after the fact, so recent periods are incomplete.
+    destination:
+      route: /trends
+      anchor: composition
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  - id: F-002
+    topic: public_safety
+    subtopic: category_composition
+    classification: verified_finding
+    calculation: largest_contributor
+    min_prior: 20
+    headline:
+      up: "{category} accounts for more of the change than any other crime type."
+      down: "{category} accounts for more of the change than any other crime type."
+      flat: "No single crime type dominates the change."
+    observation: >-
+      {category} moved from {prior_total} to {total} reports in {geography}, {change_phrase}.
+      That is the largest single contribution to the overall change of {overall_change} incidents.
+    limitations:
+      - A large percentage on a small category can reflect a handful of reports; the counts are shown alongside.
+      - Broad categories overlap, so they are not a breakdown of the total.
+    destination:
+      route: /trends
+      anchor: composition
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  - id: F-003
+    topic: public_safety
+    subtopic: measurement
+    classification: verified_finding
+    calculation: enforcement_share
+    headline:
+      any: "Part of the reported total measures police activity rather than how often something happens."
+    observation: >-
+      {enforcement_total} of {total} reported incidents in {geography} ({enforcement_pct}) fall
+      in categories recorded almost only when police act on them — narcotics, weapons,
+      prostitution, gambling and liquor offences. A fall in those categories can mean less
+      enforcement rather than less behaviour, so they are labelled wherever they appear.
+    limitations:
+      - This is a property of how records are created, not a statement about enforcement being too high or too low.
+    destination:
+      route: /trends
+      anchor: drivers
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  # -- Neighborhood differences: computed for the ward, never a ranking -------------------
+  - id: F-010
+    topic: public_safety
+    subtopic: neighborhood_differences
+    classification: verified_finding
+    calculation: portion_distribution
+    only_geography: ward20
+    headline:
+      any: "Reported incidents are distributed unevenly across the parts of Ward 20."
+    observation: >-
+      Of {total} reported incidents in Ward 20 in {period}, {top_name} accounts for
+      {top_share} and {bottom_name} for {bottom_share}. These are the portions of each community
+      area inside the ward, and the portions differ in size, so the counts are not a ranking of
+      how safe the areas are.
+    limitations:
+      - No resident-population denominator is ingested, so these are counts, not rates.
+      - Each figure covers only the part of the community area inside Ward 20.
+    destination:
+      route: /trends
+      anchor: geography
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  # -- Domains with no ingested data. These publish no figure, ever. ----------------------
+  - id: G-001
+    topic: people_and_housing
+    classification: data_gap
+    headline:
+      any: "No housing or population findings yet."
+    observation: >-
+      Population, households, tenure, vacancy and property values are not ingested, so this
+      platform cannot yet say anything about them — including the per-resident rates that would
+      make neighbourhood comparisons fair.
+    missing:
+      - Census 2020 block-level population and housing units
+      - American Community Survey 5-year estimates
+      - Cook County Assessor parcel universe
+      - Building permits and violations
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  - id: G-002
+    topic: city_services
+    classification: data_gap
+    headline:
+      any: "No city-services findings yet."
+    observation: >-
+      311 service requests are identified as the next dataset to ingest but are not yet in the
+      platform, so nothing here describes service requests, response times or their differences
+      between neighbourhoods.
+    missing:
+      - Chicago 311 Service Requests (v6vf-nfxy), 2018 onward
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  - id: G-003
+    topic: economic_conditions
+    classification: data_gap
+    headline:
+      any: "No economic, jobs or unemployment findings yet."
+    observation: >-
+      Unemployment, labour-force participation, earnings and the distinction between jobs
+      located in Ward 20 and jobs held by Ward 20 residents all require sources that are not
+      ingested. Citywide or county figures are not substituted for them.
+    missing:
+      - American Community Survey employment tables
+      - Census LEHD LODES workplace and residence area characteristics
+      - Bureau of Labor Statistics local area estimates
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  - id: G-004
+    topic: public_investment
+    classification: data_gap
+    headline:
+      any: "No public-investment findings yet."
+    observation: >-
+      TIF district finances, project locations and development commitments are not ingested. A
+      district's balance may not be attributed to the ward merely because the district
+      intersects it, so no figure is shown until project-level records are available.
+    missing:
+      - TIF district boundaries and annual reports
+      - Project-level development and redevelopment agreements
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  # -- Questions the evidence raises but cannot settle ------------------------------------
+  - id: Q-001
+    topic: public_safety
+    classification: research_question
+    headline:
+      any: "Are reported burglaries concentrated where housing-market change is greatest?"
+    observation: >-
+      Burglary locations can be described today at block level, but there is no housing-market
+      measure to set them against. Answering this needs parcel, permit and property-value data,
+      and even then geographic overlap would not establish that one causes the other.
+    missing:
+      - Cook County Assessor parcel universe and property values
+      - Building permits and demolitions
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"
+
+  - id: Q-002
+    topic: public_safety
+    classification: research_question
+    headline:
+      any: "Where incidents concentrate, is the concentration long-standing or newly emerging?"
+    observation: >-
+      Concentration can be measured from the data already held, but distinguishing a
+      long-standing cluster from a new one needs the persistence analysis described in the
+      design record, which is not yet built.
+    status: published
+    reviewed_by: product owner
+    reviewed_at: "2026-09-23"

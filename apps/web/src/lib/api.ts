@@ -60,6 +60,16 @@ export type NeighborhoodAvailability = {
   community_area: string | null;
   /** For a pending neighborhood, the official geography that contains it. */
   represented_by: string | null;
+  /** Square miles of the community area that lie inside Ward 20. */
+  intersection_sq_mi?: number | null;
+  /** Percent of Ward 20's AREA this portion covers. Not a share of incidents. */
+  share_of_ward_area_pct?: number | null;
+  /**
+   * Percent of the community area's AREA that is inside Ward 20 — e.g. Woodlawn 50.1%,
+   * Englewood 23.0%. This is an area share, never an incident share; the two differ and
+   * must never be labelled interchangeably.
+   */
+  share_of_area_in_ward_pct?: number | null;
 };
 
 export type GeographyCatalog = {
@@ -190,6 +200,14 @@ export type IncidentPage = {
   page_size: number;
   total_pages: number;
   records: IncidentRecord[];
+  /**
+   * Which of `ward` / `district` / `beat` were applied. These match the fields CPD publishes on
+   * a record, while the records themselves were selected by point-in-polygon, so applying one
+   * can remove records that ARE inside the geography.
+   */
+  published_field_filters?: string[];
+  /** How many in-geography rows the published-field filters removed. Never left unshown. */
+  excluded_by_published_field_filters?: number;
 };
 
 export type IncidentFilters = {
@@ -360,16 +378,44 @@ export type PrimaryTypeChange = {
   prior: number | null;
   absolute_change: number | null;
   percent_change: number | null;
+  /**
+   * True when the offence is recorded almost only where police act on it, so the count
+   * tracks enforcement activity rather than how often the behaviour happens. Never present a
+   * change in one of these as a change in neighbourhood conditions.
+   */
+  enforcement_generated?: boolean;
+};
+
+/**
+ * What the dataset itself could be doing to the figures. Every field describes the records,
+ * never the neighbourhood, so a reader can tell "the area changed" from "the measurement
+ * changed".
+ */
+export type MeasurementNotes = {
+  unplaced_records: number;
+  beat_definition_disagreements: number;
+  ward_definition_disagreements: number;
+  community_area_definition_disagreements: number;
+  source_removed_records: number;
+  /** The period is recent enough that records are still arriving. */
+  provisional_period: boolean;
+  notes: string[];
 };
 
 export type BeatConcentration = {
   beat: string;
   beat_display: string;
+  /** Incidents inside the selected geography. */
   current: number;
   prior: number | null;
   share: number;
   absolute_change: number | null;
   percent_change: number | null;
+  /** The whole beat's count for the same period — what a CPD beat meeting covers. */
+  whole_beat_current?: number | null;
+  /** current / whole_beat_current. Below 1 the beat reaches outside the geography. */
+  share_of_beat_inside?: number | null;
+  extends_beyond_geography?: boolean;
 };
 
 export type ArrestSummary = {
@@ -438,6 +484,8 @@ export type PulseResponse = {
   issues: IssueCard[];
   provenance: Provenance;
   data_quality: DataQuality;
+  /** Properties of the dataset that could explain part of the pattern. */
+  measurement: MeasurementNotes | null;
   neighborhoods: NeighborhoodAvailability[];
 };
 
@@ -485,4 +533,154 @@ export function formatSignedCount(value: number | null): string {
   if (value === null) return "—";
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
   return `${sign}${Math.abs(value).toLocaleString("en-US")}`;
+}
+
+// ==========================================================================================
+// Data freshness
+// ==========================================================================================
+
+/**
+ * How current the crime data is. `status` is the API's own verdict, not a guess made here:
+ * `current` | `stale` | `refresh_failed` | `never_refreshed`. A stale platform says so rather
+ * than presenting old figures as today's.
+ */
+export type CrimeFreshness = {
+  status: string;
+  reasons: string[];
+  data_through: string | null;
+  days_behind: number | null;
+  last_successful_refresh: string | null;
+  refresh_running: boolean;
+  source_lag_days: number | null;
+};
+
+export async function fetchFreshness(signal?: AbortSignal): Promise<CrimeFreshness> {
+  const response = await fetch("/api/v1/freshness", {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new ApiError(`Could not load data freshness (${response.status}).`, response.status);
+  }
+  const data = (await response.json()) as CrimeFreshness;
+  if (typeof data.status !== "string") {
+    throw new ApiError("The server returned an unexpected freshness payload.", 500);
+  }
+  return data;
+}
+
+/** True when the platform should warn that figures are not up to date. */
+export function isStaleStatus(status: string): boolean {
+  return status !== "current";
+}
+
+// ==========================================================================================
+// Overview findings — the Neighborhood Intelligence Brief
+// ==========================================================================================
+
+export type FindingClassification =
+  "verified_finding" | "change_alert" | "research_question" | "data_gap";
+
+export type FindingEvidence = { label: string; value: string; period: string | null };
+
+/**
+ * A published conclusion, or an explicit statement that a domain has no data. Everything a
+ * reader needs to judge the claim travels with it, so a finding can never appear as a bare
+ * assertion.
+ */
+export type Finding = {
+  id: string;
+  topic: string;
+  subtopic: string | null;
+  classification: FindingClassification;
+  headline: string;
+  observation: string;
+  evidence: FindingEvidence[];
+  /** What is missing, for a data gap or an unanswerable question. */
+  missing: string[];
+  limitations: string[];
+  geography_id: string | null;
+  geography_label: string | null;
+  geography_area_share_pct: number | null;
+  reporting_period: string | null;
+  comparison_period: string | null;
+  source_dataset_id: string | null;
+  data_through: string | null;
+  /** The period is still filling in, so the figure may move. */
+  provisional: boolean;
+  /** The figures include categories that track police activity rather than behaviour. */
+  enforcement_sensitive: boolean;
+  calculation: string | null;
+  destination_route: string | null;
+  destination_anchor: string | null;
+  destination_params: Record<string, string>;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+};
+
+export type FindingsResponse = {
+  geography_id: string;
+  geography_label: string;
+  year: number;
+  /** The data release the numbers came from, so an archived brief is reproducible. */
+  data_release: string | null;
+  data_through: string;
+  freshness_status: string | null;
+  generated_at: string;
+  lead: Finding[];
+  by_domain: Finding[];
+  neighborhood_differences: Finding[];
+  questions: Finding[];
+  data_gaps: Finding[];
+  /** Findings defined but withheld, and why — never silently dropped. */
+  withheld: string[];
+};
+
+export async function fetchFindings(
+  geographyId: string,
+  year: number,
+  signal?: AbortSignal,
+): Promise<FindingsResponse> {
+  const response = await fetch(`/api/v1/findings?geo=${geographyId}&year=${year}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    let detail = `The brief could not be loaded (${response.status}).`;
+    try {
+      const body = (await response.json()) as { detail?: string };
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Not JSON. Keep the status-based message rather than inventing one.
+    }
+    throw new ApiError(detail, response.status);
+  }
+  const data = (await response.json()) as FindingsResponse;
+  if (!Array.isArray(data.lead) || !Array.isArray(data.data_gaps)) {
+    throw new ApiError("The server returned an unexpected brief.", 500);
+  }
+  return data;
+}
+
+/** Resident-facing label for a finding's classification. */
+export function classificationLabel(classification: FindingClassification): string {
+  switch (classification) {
+    case "verified_finding":
+      return "Verified finding";
+    case "change_alert":
+      return "Change to watch";
+    case "research_question":
+      return "Open question";
+    case "data_gap":
+      return "No data yet";
+  }
+}
+
+/** The link that opens a finding's supporting evidence in the same geography, year and filters. */
+export function findingHref(finding: Finding): string | null {
+  if (!finding.destination_route) return null;
+  const params = new URLSearchParams(finding.destination_params);
+  const query = params.toString();
+  const anchor = finding.destination_anchor ? `#${finding.destination_anchor}` : "";
+  return `${finding.destination_route}${query ? `?${query}` : ""}${anchor}`;
 }

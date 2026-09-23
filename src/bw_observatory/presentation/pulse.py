@@ -25,6 +25,7 @@ from bw_observatory.presentation.geography import (
     load_geography_registry,
     spoken_geography_name,
 )
+from bw_observatory.presentation.measurement import measurement_notes, whole_beat_counts
 from bw_observatory.presentation.models import (
     ArrestSummary,
     BeatConcentration,
@@ -32,6 +33,7 @@ from bw_observatory.presentation.models import (
     ChangeMetric,
     DataQuality,
     IssueCard,
+    MeasurementNotes,
     MonthlyCategoryPoint,
     MonthlyComparisonPoint,
     PeriodBounds,
@@ -45,6 +47,7 @@ from bw_observatory.presentation.overview import (
     bronze_path,
     build_provenance,
     data_through,
+    is_enforcement_generated,
     is_year_to_date,
     load_broad_categories,
     load_geography_rows,
@@ -98,8 +101,18 @@ def same_period_cutoff(through: date, prior_year: int) -> date:
 
 
 def _within(records: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Records from `start` through the WHOLE of `end`.
+
+    `end` is a date, and incident timestamps carry a time of day, so comparing against
+    `Timestamp(end)` — midnight — silently dropped every record on the final day. That
+    understated the prior period: the 2024 comparison for Ward 20 lost the 24 records dated
+    31 December and reported 8,191 against the true 8,215, making the 2025 change look like
+    -4.6% instead of -4.8%. The end day is inclusive, which is also what a reader means by
+    "through 31 December".
+    """
     when = records["_when"]
-    return records[(when >= pd.Timestamp(start)) & (when <= pd.Timestamp(end))]
+    last_moment = pd.Timestamp(end) + pd.Timedelta(days=1)
+    return records[(when >= pd.Timestamp(start)) & (when < last_moment)]
 
 
 def _pct_change(current: int, prior: int | None) -> float | None:
@@ -174,6 +187,7 @@ def category_drivers(current: pd.DataFrame, prior: pd.DataFrame | None) -> list[
                 prior=p,
                 absolute_change=None if p is None else c - p,
                 percent_change=_pct_change(c, p),
+                enforcement_generated=is_enforcement_generated(ptype),
             )
         )
     rows.sort(
@@ -190,7 +204,9 @@ def _beat_display(beat: str) -> str:
 
 
 def beat_concentration(
-    current: pd.DataFrame, prior: pd.DataFrame | None
+    current: pd.DataFrame,
+    prior: pd.DataFrame | None,
+    whole_beat: dict[str, int] | None = None,
 ) -> list[BeatConcentration]:
     total_current = len(current)
     cur = current[current["_beat"].notna() & (current["_beat"] != "")]["_beat"].value_counts()
@@ -207,6 +223,8 @@ def beat_concentration(
             continue
         c = int(cur.get(beat, 0))
         p = int(pri.get(beat, 0)) if prior is not None else None
+        whole = None if whole_beat is None else whole_beat.get(beat)
+        inside_share = round(c / whole, 4) if whole else None
         rows.append(
             BeatConcentration(
                 beat=beat,
@@ -216,6 +234,11 @@ def beat_concentration(
                 share=round(c / total_current, 4) if total_current else 0.0,
                 absolute_change=None if p is None else c - p,
                 percent_change=_pct_change(c, p),
+                whole_beat_current=whole,
+                share_of_beat_inside=inside_share,
+                # A beat is only treated as reaching outside the geography when the whole-beat
+                # count is known and strictly larger; without it, nothing is claimed.
+                extends_beyond_geography=whole is not None and whole > c,
             )
         )
     rows.sort(key=lambda r: r.current, reverse=True)
@@ -594,6 +617,16 @@ def build_issues(
 # -- top-level builder -----------------------------------------------------------------
 
 
+def _measurement(
+    data_dir: Path, year: int, geography: ProductGeography, through_iso: str
+) -> MeasurementNotes | None:
+    """Measurement notes, or None if they cannot be produced — never a fabricated zero."""
+    try:
+        return measurement_notes(data_dir, year, geography, through_iso=through_iso)
+    except Exception:  # noqa: BLE001 - disclosure is additive; its absence must not 500
+        return None
+
+
 def build_pulse(data_dir: Path, year: int, neighborhood_id: str | None = None) -> PulseResponse:
     # Unknown or pending geographies raise here with the reason; nothing is fabricated.
     requested = resolve_geography(neighborhood_id or load_geography_registry().default_id)
@@ -637,7 +670,10 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str | None = None) -
     largest_increase = max(increases, key=lambda c: c.absolute_change or 0) if increases else None
     largest_decline = min(declines, key=lambda c: c.absolute_change or 0) if declines else None
 
-    beats = beat_concentration(current, prior)
+    # Whole-beat totals for the same window, so every beat row can show the unclipped number
+    # a CPD beat meeting would use alongside the count inside this geography.
+    whole_beat = whole_beat_counts(data_dir, year, start=date(year, 1, 1), end=through)
+    beats = beat_concentration(current, prior, whole_beat)
     beat_increases = [
         b
         for b in beats
@@ -715,6 +751,10 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str | None = None) -
         else f"A same-period comparison will appear once {prior_year} is enriched."
     )
 
+    # What the dataset itself could be doing to these figures. Computed from Silver flags the
+    # pipeline already writes; never a statement about the neighborhood.
+    notes = _measurement(data_dir, year, requested, through_iso)
+
     return PulseResponse(
         neighborhood_id=requested.geography_id,
         neighborhood_name=requested.display_name,
@@ -747,5 +787,6 @@ def build_pulse(data_dir: Path, year: int, neighborhood_id: str | None = None) -
             community_area_mismatches=quality["ca_mismatch"],
             bronze_integrity_verified=verify_bronze_integrity(data_dir, year),
         ),
+        measurement=notes,
         neighborhoods=neighborhood_availability(),
     )

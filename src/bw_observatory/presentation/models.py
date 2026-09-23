@@ -116,6 +116,13 @@ class IncidentPage(BaseModel):
     total_pages: int = Field(ge=0)
     records: list[IncidentRecord]
 
+    #: `ward`, `district` and `beat` filter on the fields CPD publishes on each record, while
+    #: the records themselves were selected by point-in-polygon. The two frames disagree for a
+    #: minority of records, so such a filter can drop rows that ARE inside the geography. The
+    #: count of rows dropped that way is published here rather than left silent.
+    published_field_filters: list[str] = Field(default_factory=list)
+    excluded_by_published_field_filters: int = Field(default=0, ge=0)
+
 
 class OverviewResponse(BaseModel):
     neighborhood_id: str
@@ -139,6 +146,8 @@ class OverviewResponse(BaseModel):
 
     provenance: Provenance
     data_quality: DataQuality
+    #: Properties of the dataset that could explain part of the pattern (see MeasurementNotes).
+    measurement: MeasurementNotes | None = None
     neighborhoods: list[NeighborhoodAvailability]
 
 
@@ -191,6 +200,11 @@ class PrimaryTypeChange(BaseModel):
     absolute_change: int | None = None
     percent_change: float | None = None
 
+    #: True when this offence is recorded almost only where police act on it, so the count
+    #: tracks enforcement activity rather than how often the behaviour occurs. Never present
+    #: a change in one of these as a change in neighbourhood conditions.
+    enforcement_generated: bool = False
+
 
 class BeatConcentration(BaseModel):
     """One police beat's share of the neighborhood and its same-period change."""
@@ -203,6 +217,16 @@ class BeatConcentration(BaseModel):
     share: float = Field(ge=0, le=1)
     absolute_change: int | None = None
     percent_change: float | None = None
+
+    #: The beat's whole-beat count for the same period, across the whole city, not clipped to
+    #: the selected geography. A CPD beat meeting covers the whole beat, so a resident needs
+    #: both numbers to compare what they are told with what they read here.
+    whole_beat_current: int | None = None
+    #: `current / whole_beat_current` — how much of the beat's activity falls inside the
+    #: selected geography. Below 1.0 the beat extends beyond it.
+    share_of_beat_inside: float | None = None
+    #: True when the beat reaches outside the selected geography.
+    extends_beyond_geography: bool = False
 
 
 class ArrestSummary(BaseModel):
@@ -259,6 +283,106 @@ class IssueCard(BaseModel):
     evidence: str
 
 
+class MeasurementNotes(BaseModel):
+    """What the dataset itself could be doing to a pattern, for the selected geography/year.
+
+    Every field here is a property of the records, not of the neighborhood. They are published
+    so a reader can tell "the area changed" from "the measurement changed".
+    """
+
+    #: Records in the geography whose published coordinates could not be placed in a polygon.
+    unplaced_records: int = Field(default=0, ge=0)
+    #: Records where CPD's published beat and the point-in-polygon beat disagree. Expected to
+    #: be ~11% because published coordinates are masked to the block, which cannot resolve a
+    #: beat boundary; it is not an error.
+    beat_definition_disagreements: int = Field(default=0, ge=0)
+    #: Same, for ward and community area. Smaller, because the polygons are larger.
+    ward_definition_disagreements: int = Field(default=0, ge=0)
+    community_area_definition_disagreements: int = Field(default=0, ge=0)
+    #: Records the City has since withdrawn. Kept as provenance, excluded from every figure.
+    source_removed_records: int = Field(default=0, ge=0)
+    #: True when the reporting period is recent enough that late-arriving records are still
+    #: likely to raise the count. A decline here may shrink as records arrive.
+    provisional_period: bool = False
+    #: Plain-language notes a view can render without re-deriving any of the above.
+    notes: list[str] = Field(default_factory=list)
+
+
+class FindingEvidence(BaseModel):
+    """One number behind a finding, with the period it covers."""
+
+    label: str
+    value: str
+    period: str | None = None
+
+
+class Finding(BaseModel):
+    """A published conclusion, or an explicit statement that a domain has no data.
+
+    Every field a reader needs to judge the claim travels with it: what place and period it
+    covers, what it is compared against, where the number came from, how fresh it is, what it
+    does not establish, and where to see the working.
+    """
+
+    id: str
+    topic: str
+    subtopic: str | None = None
+    #: verified_finding | change_alert | research_question | data_gap
+    classification: str
+    headline: str
+    observation: str
+
+    evidence: list[FindingEvidence] = Field(default_factory=list)
+    #: What is missing, for a data gap or an unanswerable question.
+    missing: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+    geography_id: str | None = None
+    geography_label: str | None = None
+    #: Percent of the community area's AREA inside Ward 20, when the finding covers a portion.
+    geography_area_share_pct: float | None = None
+    reporting_period: str | None = None
+    comparison_period: str | None = None
+
+    source_dataset_id: str | None = None
+    data_through: str | None = None
+    #: True when the period is still filling in, so the figure may move.
+    provisional: bool = False
+    #: True when the figures include categories that track police activity.
+    enforcement_sensitive: bool = False
+
+    calculation: str | None = None
+    destination_route: str | None = None
+    destination_anchor: str | None = None
+    #: Query parameters a link must carry so the evidence opens in the same state.
+    destination_params: dict[str, str] = Field(default_factory=dict)
+
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+
+
+class FindingsResponse(BaseModel):
+    """The Overview brief for one geography and year."""
+
+    geography_id: str
+    geography_label: str
+    year: int
+    #: The release the numbers were computed from, so an archived brief can be reproduced.
+    data_release: str | None = None
+    data_through: str
+    freshness_status: str | None = None
+    generated_at: str
+
+    lead: list[Finding]
+    by_domain: list[Finding]
+    neighborhood_differences: list[Finding]
+    questions: list[Finding]
+    data_gaps: list[Finding]
+
+    #: Findings that were defined but withheld, and why — never silently dropped.
+    withheld: list[str] = Field(default_factory=list)
+
+
 class PulseResponse(BaseModel):
     neighborhood_id: str
     neighborhood_name: str
@@ -296,4 +420,6 @@ class PulseResponse(BaseModel):
 
     provenance: Provenance
     data_quality: DataQuality
+    #: Properties of the dataset that could explain part of the pattern (see MeasurementNotes).
+    measurement: MeasurementNotes | None = None
     neighborhoods: list[NeighborhoodAvailability]
