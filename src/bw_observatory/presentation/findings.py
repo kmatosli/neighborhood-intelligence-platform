@@ -76,6 +76,18 @@ class FindingsConfigError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class CalcContext:
+    """Everything a calculation may read. Passing the data root explicitly matters: a
+    calculation that reached for `Settings()` would read the live release even when a caller
+    (a test, a reproduction of an archived brief) asked for a different one."""
+
+    data_dir: Path
+    year: int
+    pulse: Any
+    geography: ProductGeography
+
+
+@dataclass(frozen=True)
 class Computed:
     """What a calculation returns: slot values, evidence rows, and any suppression reason."""
 
@@ -215,8 +227,9 @@ def _change_phrase(current: int, prior: int) -> tuple[str, str]:
     return f"{word} {abs(delta):,} reports, {pct:.1f}%", word
 
 
-def calc_overall_change(pulse: Any, geography: ProductGeography) -> Computed:
+def calc_overall_change(context: CalcContext) -> Computed:
     """Total reported incidents against the same period last year."""
+    pulse = context.pulse
     current = pulse.incidents.current
     prior = pulse.incidents.prior
     if prior is None:
@@ -243,8 +256,9 @@ def calc_overall_change(pulse: Any, geography: ProductGeography) -> Computed:
     )
 
 
-def calc_largest_contributor(pulse: Any, geography: ProductGeography) -> Computed:
+def calc_largest_contributor(context: CalcContext) -> Computed:
     """The crime type that moved the total most, by absolute change."""
+    pulse = context.pulse
     scored = [d for d in pulse.category_drivers if d.absolute_change is not None]
     if not scored:
         return Computed(values={}, withhold="no prior period to attribute the change to")
@@ -275,8 +289,9 @@ def calc_largest_contributor(pulse: Any, geography: ProductGeography) -> Compute
     )
 
 
-def calc_enforcement_share(pulse: Any, geography: ProductGeography) -> Computed:
+def calc_enforcement_share(context: CalcContext) -> Computed:
     """How much of the total sits in categories recorded only where police act."""
+    pulse = context.pulse
     total = pulse.incidents.current
     if total <= 0:
         return Computed(values={}, withhold="no incidents in the period")
@@ -299,7 +314,7 @@ def calc_enforcement_share(pulse: Any, geography: ProductGeography) -> Computed:
     )
 
 
-def calc_portion_distribution(pulse: Any, geography: ProductGeography) -> Computed:
+def calc_portion_distribution(context: CalcContext) -> Computed:
     """How the ward's reported incidents spread across the community-area portions inside it.
 
     One pass over the year: the ward's records already carry their spatial community area, so
@@ -315,8 +330,7 @@ def calc_portion_distribution(pulse: Any, geography: ProductGeography) -> Comput
     if len(names) < 2:
         return Computed(values={}, withhold="fewer than two areas are available to compare")
 
-    settings = Settings()
-    rows = load_geography_rows(settings.data_dir, pulse.year, geography)
+    rows = load_geography_rows(context.data_dir, context.year, context.geography)
     if rows.empty:
         return Computed(values={}, withhold="no records for the period")
 
@@ -352,7 +366,7 @@ def calc_portion_distribution(pulse: Any, geography: ProductGeography) -> Comput
     )
 
 
-CALCULATIONS: dict[str, Callable[[Any, ProductGeography], Computed]] = {
+CALCULATIONS: dict[str, Callable[[CalcContext], Computed]] = {
     "overall_change": calc_overall_change,
     "largest_contributor": calc_largest_contributor,
     "enforcement_share": calc_enforcement_share,
@@ -418,7 +432,9 @@ def build_findings(data_dir: Path, year: int, geography_id: str | None = None) -
             calculation = CALCULATIONS.get(spec.calculation)
             if calculation is None:
                 raise FindingsConfigError(f"{spec.id}: unknown calculation `{spec.calculation}`.")
-            computed = calculation(pulse, geography)
+            computed = calculation(
+                CalcContext(data_dir=data_dir, year=year, pulse=pulse, geography=geography)
+            )
             if computed.withhold:
                 withheld.append(f"{spec.id}: {computed.withhold}")
                 continue
