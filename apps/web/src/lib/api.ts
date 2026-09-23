@@ -60,6 +60,16 @@ export type NeighborhoodAvailability = {
   community_area: string | null;
   /** For a pending neighborhood, the official geography that contains it. */
   represented_by: string | null;
+  /** Square miles of the community area that lie inside Ward 20. */
+  intersection_sq_mi?: number | null;
+  /** Percent of Ward 20's AREA this portion covers. Not a share of incidents. */
+  share_of_ward_area_pct?: number | null;
+  /**
+   * Percent of the community area's AREA that is inside Ward 20 — e.g. Woodlawn 50.1%,
+   * Englewood 23.0%. This is an area share, never an incident share; the two differ and
+   * must never be labelled interchangeably.
+   */
+  share_of_area_in_ward_pct?: number | null;
 };
 
 export type GeographyCatalog = {
@@ -360,16 +370,44 @@ export type PrimaryTypeChange = {
   prior: number | null;
   absolute_change: number | null;
   percent_change: number | null;
+  /**
+   * True when the offence is recorded almost only where police act on it, so the count
+   * tracks enforcement activity rather than how often the behaviour happens. Never present a
+   * change in one of these as a change in neighbourhood conditions.
+   */
+  enforcement_generated?: boolean;
+};
+
+/**
+ * What the dataset itself could be doing to the figures. Every field describes the records,
+ * never the neighbourhood, so a reader can tell "the area changed" from "the measurement
+ * changed".
+ */
+export type MeasurementNotes = {
+  unplaced_records: number;
+  beat_definition_disagreements: number;
+  ward_definition_disagreements: number;
+  community_area_definition_disagreements: number;
+  source_removed_records: number;
+  /** The period is recent enough that records are still arriving. */
+  provisional_period: boolean;
+  notes: string[];
 };
 
 export type BeatConcentration = {
   beat: string;
   beat_display: string;
+  /** Incidents inside the selected geography. */
   current: number;
   prior: number | null;
   share: number;
   absolute_change: number | null;
   percent_change: number | null;
+  /** The whole beat's count for the same period — what a CPD beat meeting covers. */
+  whole_beat_current?: number | null;
+  /** current / whole_beat_current. Below 1 the beat reaches outside the geography. */
+  share_of_beat_inside?: number | null;
+  extends_beyond_geography?: boolean;
 };
 
 export type ArrestSummary = {
@@ -438,6 +476,8 @@ export type PulseResponse = {
   issues: IssueCard[];
   provenance: Provenance;
   data_quality: DataQuality;
+  /** Properties of the dataset that could explain part of the pattern. */
+  measurement: MeasurementNotes | null;
   neighborhoods: NeighborhoodAvailability[];
 };
 
@@ -485,4 +525,43 @@ export function formatSignedCount(value: number | null): string {
   if (value === null) return "—";
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
   return `${sign}${Math.abs(value).toLocaleString("en-US")}`;
+}
+
+// ==========================================================================================
+// Data freshness
+// ==========================================================================================
+
+/**
+ * How current the crime data is. `status` is the API's own verdict, not a guess made here:
+ * `current` | `stale` | `refresh_failed` | `never_refreshed`. A stale platform says so rather
+ * than presenting old figures as today's.
+ */
+export type CrimeFreshness = {
+  status: string;
+  reasons: string[];
+  data_through: string | null;
+  days_behind: number | null;
+  last_successful_refresh: string | null;
+  refresh_running: boolean;
+  source_lag_days: number | null;
+};
+
+export async function fetchFreshness(signal?: AbortSignal): Promise<CrimeFreshness> {
+  const response = await fetch("/api/v1/freshness", {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new ApiError(`Could not load data freshness (${response.status}).`, response.status);
+  }
+  const data = (await response.json()) as CrimeFreshness;
+  if (typeof data.status !== "string") {
+    throw new ApiError("The server returned an unexpected freshness payload.", 500);
+  }
+  return data;
+}
+
+/** True when the platform should warn that figures are not up to date. */
+export function isStaleStatus(status: string): boolean {
+  return status !== "current";
 }

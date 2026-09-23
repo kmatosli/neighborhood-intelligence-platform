@@ -148,6 +148,31 @@ def _broad_lookup() -> tuple[dict[str, str], str]:
     return lookup, unmapped
 
 
+@lru_cache(maxsize=1)
+def load_enforcement_generated_types(path: Path | None = None) -> frozenset[str]:
+    """Primary types whose counts track police activity rather than underlying behaviour.
+
+    These offences are recorded almost only when an officer acts on them, so a fall in the
+    count can mean less enforcement rather than less behaviour. The list is config, not code
+    (`enforcement_generated_primary_types` in the crime category file), because deciding that
+    a measure is enforcement-driven is a methodological claim that has to be reviewable.
+    """
+    resolved = path or Settings().crime_categories_config
+    if not resolved.exists():
+        raise OverviewDataUnavailable(f"Crime category config not found: {resolved}")
+    payload = yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}
+    return frozenset(
+        str(t).strip().upper() for t in payload.get("enforcement_generated_primary_types", [])
+    )
+
+
+def is_enforcement_generated(primary_type: str | None) -> bool:
+    """True when this primary type's count reflects enforcement activity."""
+    if primary_type is None:
+        return False
+    return primary_type.strip().upper() in load_enforcement_generated_types()
+
+
 def broad_category_of(primary_type: str | None) -> str:
     """The broad category key for a raw primary_type. Unknown/blank types map to the
     unmapped key, so no record is ever silently dropped."""

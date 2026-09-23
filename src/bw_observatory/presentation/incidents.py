@@ -9,6 +9,13 @@ Only records whose coordinates fall inside the requested geography (Ward 20, or 
 an area inside Ward 20) are returned. The place filter lives in `presentation.geography`,
 never in the city's reported `ward` / `community_area` fields.
 
+The `ward`, `district` and `beat` query filters are different: they match the fields CPD
+publishes on each record, which is what a reader comparing this table with a CPD document
+needs. Those published fields disagree with the mapped location for a minority of records
+(about 3% for ward, 11% for beat on Ward 20 2025) because published coordinates are masked to
+the block. Applying one can therefore hide records that ARE inside the geography, so the number
+of rows dropped that way is counted and published on the response rather than left silent.
+
 Filtering, sorting, and pagination all happen here (server-side), so the browser never has
 to download a whole year to page or sort through it.
 """
@@ -67,6 +74,10 @@ SORTABLE = {
     "district": "district",
     "ward": "ward",
 }
+
+# Filters that match CPD's published fields rather than the mapped location. Mixing frames is
+# legitimate (a reader may want the beat CPD printed on the record) but must never be silent.
+PUBLISHED_FIELD_FILTERS = ("ward", "district", "beat")
 
 # Columns the free-text search scans.
 _SEARCH_COLUMNS = ["block", "description", "location_description", "primary_type", "case_number"]
@@ -167,6 +178,9 @@ def apply_filters(
         filtered = contains("description", description)
     if location:
         filtered = contains("location_description", location)
+    # Published-field filters. `before` is kept so the caller can report how many rows inside
+    # the geography were removed by matching a published field instead of the mapped location.
+    before_published = len(filtered)
     if ward:
         filtered = filtered[filtered["ward"].astype("string").str.strip() == ward.strip()]
     if district:
@@ -175,6 +189,7 @@ def apply_filters(
     if beat:
         beats = filtered["beat"].astype("string").str.strip().str.lstrip("0")
         filtered = filtered[beats == beat.strip().lstrip("0")]
+    filtered.attrs["published_field_excluded"] = before_published - len(filtered)
 
     if date_from:
         filtered = filtered[filtered["_when"] >= pd.Timestamp(date_from)]
@@ -321,6 +336,9 @@ def build_incident_page(
     start = (page - 1) * page_size
     window = ordered.iloc[start : start + page_size]
 
+    applied = [
+        name for name, value in (("ward", ward), ("district", district), ("beat", beat)) if value
+    ]
     return IncidentPage(
         neighborhood_id=geography.geography_id,
         year=year,
@@ -329,6 +347,8 @@ def build_incident_page(
         page_size=page_size,
         total_pages=total_pages,
         records=[to_record(row) for _, row in window.iterrows()],
+        published_field_filters=applied,
+        excluded_by_published_field_filters=int(ordered.attrs.get("published_field_excluded", 0)),
     )
 
 

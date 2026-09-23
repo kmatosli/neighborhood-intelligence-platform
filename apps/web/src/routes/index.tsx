@@ -10,15 +10,19 @@ import { useBrief, type BriefItem } from "@/lib/brief";
 import { useYear } from "@/lib/useYear";
 import { geographyHeadingName, useGeography } from "@/lib/useGeography";
 import {
+  fetchFreshness,
   fetchPulse,
   formatCount,
   formatPercentChange,
   formatSignedCount,
+  isStaleStatus,
   periodLabel,
   residentDate,
   type BeatConcentration,
   type BroadCategoryChange,
+  type CrimeFreshness,
   type IssueCard as IssueCardData,
+  type MeasurementNotes,
   type PrimaryTypeChange,
   type PulseResponse,
 } from "@/lib/api";
@@ -48,7 +52,13 @@ function Overview() {
     error: yearsErr,
     isEmpty,
   } = useYear();
-  const { geographyId, isLoading: geoLoading, isError: geoError, error: geoErr } = useGeography();
+  const {
+    geographyId,
+    geography,
+    isLoading: geoLoading,
+    isError: geoError,
+    error: geoErr,
+  } = useGeography();
 
   const pulseQuery = useQuery({
     queryKey: ["pulse", geographyId, year],
@@ -56,6 +66,15 @@ function Overview() {
     enabled: year !== null && geographyId !== null,
     retry: false,
     placeholderData: keepPreviousData,
+  });
+
+  // How current the data is. A failure here must never hide the page: the banner simply does
+  // not render, because a missing freshness check is not a reason to withhold the figures.
+  const freshnessQuery = useQuery({
+    queryKey: ["freshness"],
+    queryFn: ({ signal }) => fetchFreshness(signal),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 
   const data = pulseQuery.data;
@@ -81,15 +100,34 @@ function Overview() {
   if (pulseQuery.isError) return <ErrorState message={(pulseQuery.error as Error).message} />;
   if (!data || year === null || geographyId === null) return <LoadingState />;
 
-  return <PulseContent data={data} isUpdating={pulseQuery.isFetching} />;
+  return (
+    <PulseContent
+      data={data}
+      isUpdating={pulseQuery.isFetching}
+      freshness={freshnessQuery.data ?? null}
+      areaShare={geography?.share_of_area_in_ward_pct ?? null}
+    />
+  );
 }
 
-function PulseContent({ data, isUpdating }: { data: PulseResponse; isUpdating: boolean }) {
+function PulseContent({
+  data,
+  isUpdating,
+  freshness,
+  areaShare,
+}: {
+  data: PulseResponse;
+  isUpdating: boolean;
+  freshness: CrimeFreshness | null;
+  /** Percent of the community area's AREA inside Ward 20 — an area share, not an incident share. */
+  areaShare: number | null;
+}) {
   const priorYear = data.year - 1;
   const period = periodLabel(data.year, data.is_year_to_date);
 
   return (
     <WireShell dateThrough={data.provenance.data_through}>
+      <FreshnessBanner freshness={freshness} />
       {/* 1. Scope */}
       <section aria-labelledby="scope" className="mb-6">
         <QuestionHeader
@@ -109,6 +147,14 @@ function PulseContent({ data, isUpdating }: { data: PulseResponse; isUpdating: b
             {data.provenance.geography_scope} Comparisons use the{" "}
             <strong>same period last year</strong>, so a partial year is never compared with a
             completed year.
+            {areaShare != null && (
+              <>
+                {" "}
+                Because areas differ in size and population, a count here is not comparable with
+                another area&apos;s until both are set against the same measure —{" "}
+                <strong>counts alone are not a safety ranking</strong>.
+              </>
+            )}
           </p>
         </QuestionHeader>
       </section>
@@ -131,6 +177,16 @@ function PulseContent({ data, isUpdating }: { data: PulseResponse; isUpdating: b
           <p className="mt-3 rounded-md border bg-caution/20 p-3 text-base" role="note">
             <strong>{data.year} year-to-date.</strong> Figures cover January 1 through{" "}
             {residentDate(data.provenance.data_through)} and will keep rising as the year continues.
+          </p>
+        )}
+        {data.measurement?.provisional_period && (
+          <p
+            className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-base"
+            role="note"
+          >
+            <strong>Provisional.</strong> This period ends close to the newest data the City has
+            published, and records are still arriving for it. Counts will rise, and an apparent
+            decline may shrink as late reports land.
           </p>
         )}
         {!data.comparison_available && (
@@ -177,6 +233,8 @@ function PulseContent({ data, isUpdating }: { data: PulseResponse; isUpdating: b
       />
 
       {/* 13. Data trust */}
+      <MeasurementStrip measurement={data.measurement} />
+
       <DataTrust data={data} period={period} />
     </WireShell>
   );
@@ -388,9 +446,20 @@ function ChartSection({ data, priorYear }: { data: PulseResponse; priorYear: num
 // -- 6. beat concentration -------------------------------------------------------------
 
 function BeatConcentrationSection({ data, period }: { data: PulseResponse; period: string }) {
-  const beats = data.beats.slice(0, 8);
+  // Every beat is reachable. Truncating to a top-N hid 13 of 21 beats, which made a beat look
+  // absent when it was only ranked low.
+  const [showAll, setShowAll] = useState(false);
+  const all = data.beats;
+  const beats = showAll ? all : all.slice(0, 8);
   const max = Math.max(...beats.map((b) => b.current), 1);
-  if (beats.length === 0) return null;
+  if (all.length === 0) return null;
+  // Almost every beat spills over the boundary by a record or two, so counting any overlap
+  // would report "23 of 23" and teach the reader to ignore the notice. Only beats that are
+  // MATERIALLY outside are counted — the ones where the local figure is a small slice of the
+  // beat a CPD beat meeting actually covers.
+  const straddling = all.filter(
+    (b) => b.share_of_beat_inside != null && b.share_of_beat_inside < MOSTLY_INSIDE,
+  ).length;
 
   return (
     <section aria-labelledby="concentration" className="mt-8">
@@ -401,6 +470,15 @@ function BeatConcentrationSection({ data, period }: { data: PulseResponse; perio
         Reported incidents by police beat in {data.neighborhood_name}, {period}. A larger share does
         not by itself measure police performance.
       </p>
+      {straddling > 0 && (
+        <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-base">
+          <strong>These counts are clipped to {data.neighborhood_name}.</strong> {straddling} of{" "}
+          {all.length} beats listed reach materially beyond it — for some, most of the beat is
+          outside — so the “whole beat” column shows the figure a CPD beat meeting for that beat
+          would use. Beat rows use the beat CPD published on each record; ward and neighborhood
+          figures use the mapped location, and the two disagree for about one record in nine.
+        </p>
+      )}
       <div className="mt-3 overflow-x-auto rounded-lg border bg-card">
         <table className="w-full min-w-[40rem] text-base">
           <caption className="sr-only">Reported incidents by beat, {period}</caption>
@@ -413,7 +491,10 @@ function BeatConcentrationSection({ data, period }: { data: PulseResponse; perio
                 This period
               </th>
               <th scope="col" className="px-3 py-2 text-right">
-                Reports
+                In {data.neighborhood_name}
+              </th>
+              <th scope="col" className="px-3 py-2 text-right">
+                Whole beat
               </th>
               <th scope="col" className="px-3 py-2 text-right">
                 Share
@@ -436,6 +517,20 @@ function BeatConcentrationSection({ data, period }: { data: PulseResponse; perio
                   />
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCount(b.current)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {b.whole_beat_current != null ? (
+                    <>
+                      {formatCount(b.whole_beat_current)}
+                      {b.share_of_beat_inside != null && b.share_of_beat_inside < MOSTLY_INSIDE && (
+                        <span className="ml-1 whitespace-nowrap text-sm text-muted-foreground">
+                          (only {Math.round(b.share_of_beat_inside * 100)}% here)
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">{Math.round(b.share * 100)}%</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {b.absolute_change !== null ? formatSignedCount(b.absolute_change) : "—"}
@@ -445,9 +540,22 @@ function BeatConcentrationSection({ data, period }: { data: PulseResponse; perio
           </tbody>
         </table>
       </div>
+      {all.length > 8 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2 text-base underline underline-offset-4"
+        >
+          {showAll ? "Show the 8 largest beats" : `Show all ${all.length} beats`}
+        </button>
+      )}
     </section>
   );
 }
+
+// A beat at or above this share of its activity inside the selected geography is treated as
+// local for disclosure purposes; below it, the whole-beat figure is materially different.
+const MOSTLY_INSIDE = 0.95;
 
 // -- 7. drivers ------------------------------------------------------------------------
 
@@ -463,7 +571,12 @@ function DriverTableSection({
   priorYear: number;
 }) {
   const [sortKey, setSortKey] = useState<DriverSortKey>("absolute_change");
-  const sorted = [...drivers].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0)).slice(0, 12);
+  // Every crime type present in the data is reachable. A top-12 cut hid 14 of 26 types, which
+  // made a rare type (PROSTITUTION had 1 report in Ward 20 in 2025) look like missing data.
+  const [showAll, setShowAll] = useState(false);
+  const ranked = [...drivers].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0));
+  const sorted = showAll ? ranked : ranked.slice(0, 12);
+  const enforcementShown = sorted.some((d) => d.enforcement_generated);
 
   const header = (key: DriverSortKey, label: string) => (
     <th scope="col" className="px-3 py-2 text-right">
@@ -489,8 +602,16 @@ function DriverTableSection({
       </h2>
       <p className="mt-1 text-base text-muted-foreground">
         Detailed City of Chicago crime types, {period} vs the same period in {priorYear}. These are
-        the specific CPD types behind the broad categories above.
+        the specific CPD types behind the broad categories above. A type with no reports shows zero
+        — that is a count, not missing data.
       </p>
+      {enforcementShown && (
+        <p className="mt-2 rounded-md border border-sky-500/40 bg-sky-500/10 p-3 text-base">
+          Rows marked <strong>enforcement-led</strong> are recorded almost only when police act on
+          them, so the count follows enforcement activity rather than how often the behaviour
+          happens. A fall can mean less enforcement, not less behaviour.
+        </p>
+      )}
       <div className="mt-3 overflow-x-auto rounded-lg border bg-card">
         <table className="w-full min-w-[46rem] text-base">
           <caption className="sr-only">Crime types by change, {period}</caption>
@@ -513,6 +634,11 @@ function DriverTableSection({
               <tr key={d.primary_type} className="border-b last:border-0">
                 <th scope="row" className="px-3 py-2 font-normal">
                   {d.primary_type}
+                  {d.enforcement_generated && (
+                    <span className="ml-2 whitespace-nowrap rounded border border-sky-500/50 px-1.5 py-0.5 text-sm text-muted-foreground">
+                      enforcement-led
+                    </span>
+                  )}
                 </th>
                 <td className="px-3 py-2 text-muted-foreground">{d.broad_label}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCount(d.current)}</td>
@@ -530,6 +656,15 @@ function DriverTableSection({
           </tbody>
         </table>
       </div>
+      {ranked.length > 12 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2 text-base underline underline-offset-4"
+        >
+          {showAll ? "Show the 12 largest changes" : `Show all ${ranked.length} crime types`}
+        </button>
+      )}
     </section>
   );
 }
@@ -741,6 +876,71 @@ function DataTrust({ data, period }: { data: PulseResponse; period: string }) {
 }
 
 // -- states ----------------------------------------------------------------------------
+
+/**
+ * How current the data is. Rendered at the top of the page because a resident reading a figure
+ * needs to know it is 16 days old before they read it, not after. Renders nothing when the
+ * check is unavailable or the data is current — a banner that always shows gets ignored.
+ */
+function FreshnessBanner({ freshness }: { freshness: CrimeFreshness | null }) {
+  if (!freshness || !isStaleStatus(freshness.status)) return null;
+
+  const label =
+    freshness.status === "refresh_failed"
+      ? "The last update attempt failed."
+      : freshness.status === "never_refreshed"
+        ? "This data has not been updated since it was first loaded."
+        : "This data is not up to date.";
+
+  return (
+    <div
+      role="status"
+      className="mb-6 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-base"
+    >
+      <strong>{label}</strong>{" "}
+      {freshness.data_through && (
+        <>
+          The most recent reported incident is from {residentDate(freshness.data_through)}
+          {freshness.days_behind != null ? `, ${freshness.days_behind} days ago` : ""}.{" "}
+        </>
+      )}
+      {freshness.source_lag_days != null && (
+        <>The City withholds roughly the last {freshness.source_lag_days} days. </>
+      )}
+      Figures below are the latest available, not today&apos;s.
+    </div>
+  );
+}
+
+/**
+ * Properties of the dataset that could explain part of a pattern. This is deliberately plain
+ * and unstyled-as-a-warning: none of it means anything is wrong, only that a reader should know
+ * which differences come from how the records are made rather than from the neighbourhood.
+ */
+function MeasurementStrip({ measurement }: { measurement: MeasurementNotes | null }) {
+  if (!measurement || measurement.notes.length === 0) return null;
+  return (
+    <section aria-labelledby="measurement" className="mt-8">
+      <h2 id="measurement" className="font-serif text-xl">
+        How these records are made
+      </h2>
+      <p className="mt-1 text-base text-muted-foreground">
+        None of the following means a figure is wrong. They are properties of the dataset, so a
+        reader can tell a change in the neighborhood from a change in the measurement.
+      </p>
+      <ul className="mt-3 space-y-2 rounded-lg border bg-card p-4 text-base">
+        {measurement.notes.map((note) => (
+          <li key={note} className="flex gap-2">
+            <span aria-hidden="true" className="text-muted-foreground">
+              •
+            </span>
+            <span>{note}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function LoadingState() {
   return (
