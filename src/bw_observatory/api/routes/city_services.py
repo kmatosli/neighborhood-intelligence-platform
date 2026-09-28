@@ -21,6 +21,7 @@ from bw_observatory.presentation.city_services import (
     available_years,
     build_category_report,
 )
+from bw_observatory.presentation.overview import OverviewDataUnavailable
 
 router = APIRouter(prefix="/api/v1/city-services", tags=["city-services"])
 
@@ -128,7 +129,7 @@ def get_category_report(
         report = build_category_report(
             settings.data_dir, year, geography_id.lower(), category.lower()
         )
-    except CityServicesUnavailable as exc:
+    except (CityServicesUnavailable, OverviewDataUnavailable) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return CategoryReportResponse(

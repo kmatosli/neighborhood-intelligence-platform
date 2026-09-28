@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import geopandas as gpd
@@ -797,3 +798,34 @@ def test_a_missing_partition_is_an_error_not_a_silent_skip(
 
     with pytest.raises(FileNotFoundError):
         _reconciler(root, ["P1"], monkeypatch).run([2019])
+
+
+# -- API refusals ------------------------------------------------------------------------
+
+
+def test_the_api_refuses_an_unknown_or_unavailable_geography_honestly(
+    tmp_path: Path, layers: ReferenceLayers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`bronzeville` is an unknown geography, not a pending one, and `back-of-the-yards` has no
+    validated boundary. Both must answer 404 with the reason — never a 500, and never a payload
+    of zeros that reads as "no potholes here"."""
+    from fastapi.testclient import TestClient
+
+    from bw_observatory.api.app import app
+
+    rows = [
+        _row(sr_number=f"P{i}", created_date=f"2026-0{(i % 5) + 1}-10T09:00:00.000")
+        for i in range(10)
+    ]
+    root = _release(tmp_path, layers, {2026: rows})
+    from bw_observatory.api.routes import city_services as route
+
+    monkeypatch.setattr(route, "Settings", lambda: SimpleNamespace(data_dir=root))
+    client = TestClient(app)
+
+    for geography_id in ("bronzeville", "back-of-the-yards"):
+        response = client.get(f"/api/v1/city-services/potholes/{geography_id}?year=2026")
+        assert response.status_code == 404, geography_id
+        assert response.json()["detail"], geography_id
+
+    assert client.get("/api/v1/city-services/potholes/ward20?year=2026").status_code == 200
