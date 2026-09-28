@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from bw_observatory.api.routes import (
+    city_services,
     findings,
     freshness,
     geographies,
@@ -58,6 +59,7 @@ app.include_router(pulse.router)
 app.include_router(years.router)
 app.include_router(geographies.router)
 app.include_router(incidents.router)
+app.include_router(city_services.router)
 app.include_router(findings.router)
 app.include_router(freshness.router)
 
