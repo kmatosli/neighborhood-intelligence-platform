@@ -5,7 +5,8 @@
  * do is let a number appear without the interpretation it needs:
  *
  * - raw and primary counts are shown together, because they mean different things;
- * - a completion time says, on screen, that a closure is not proof of a repair;
+ * - the duration is called what it is — days to RECORDED CLOSURE — and says on screen that a
+ *   recorded closure is not evidence of a repair. Never "completion" or "response time";
  * - portion counts carry each area's share of the ward's land and are not a ranking;
  * - the absence of a street-mileage denominator is stated, so counts are never read as rates.
  */
@@ -110,11 +111,11 @@ export function PotholeServicePanel({ geographyId, year }: { geographyId: string
   const report = query.data;
   if (!report) return null;
 
-  const completion = report.completion ?? null;
-  const median = numberOrNull(completion?.median_days);
-  const p25 = numberOrNull(completion?.p25_days);
-  const p75 = numberOrNull(completion?.p75_days);
-  const eligible = numberOrNull(completion?.eligible_requests);
+  const closure = report.recorded_closure ?? null;
+  const median = numberOrNull(closure?.median_days);
+  const p25 = numberOrNull(closure?.p25_days);
+  const p75 = numberOrNull(closure?.p75_days);
+  const eligible = numberOrNull(closure?.eligible_requests);
   const change = report.prior_counts === null ? null : report.counts.raw - report.prior_counts.raw;
   const openCount = numberOrNull(report.open_ages.count) ?? 0;
   const openMedian = numberOrNull(report.open_ages.median_days);
@@ -174,11 +175,12 @@ export function PotholeServicePanel({ geographyId, year }: { geographyId: string
 
       <MonthlyBars report={report} />
 
-      {completion !== null && median !== null && (
+      {closure !== null && median !== null && (
         <section className="mt-4 rounded-lg border bg-card p-4">
-          <h4 className="font-serif text-lg">How long requests stayed open</h4>
+          <h4 className="font-serif text-lg">Days to recorded closure</h4>
           <p className="mt-1 text-base">
-            Median <strong>{days(median)}</strong> from request to closure
+            Median <strong>{days(median)}</strong> from the request to the City marking the 311
+            record closed
             {p25 !== null && p75 !== null && (
               <>
                 {" "}
@@ -189,7 +191,7 @@ export function PotholeServicePanel({ geographyId, year }: { geographyId: string
           </p>
           {/* The limitation that matters most, on screen rather than filed elsewhere. */}
           <p className="mt-2 text-base text-muted-foreground">
-            {String(completion.interpretation ?? "")}
+            {String(closure.interpretation ?? "")}
           </p>
         </section>
       )}
@@ -260,7 +262,7 @@ export function PotholeServicePanel({ geographyId, year }: { geographyId: string
           ))}
         </ul>
         <p className="mt-2 text-sm text-muted-foreground">
-          {Object.entries(report.excluded_from_analysis).length > 0 && (
+          {Object.entries(report.excluded_from_analysis).length > 0 ? (
             <>
               Excluded from these figures:{" "}
               {Object.entries(report.excluded_from_analysis)
@@ -268,9 +270,25 @@ export function PotholeServicePanel({ geographyId, year }: { geographyId: string
                 .join(", ")}
               .{" "}
             </>
+          ) : (
+            <>
+              No pothole request in this period was excluded: every one carried usable
+              coordinates.{" "}
+            </>
           )}
-          The ward recorded on the request differs from its mapped location for{" "}
-          {formatCount(report.source_ward_disagreement)} records this year.
+          Of the requests counted here, {formatCount(report.source_ward_disagreement)} carried a
+          different ward in the City&apos;s own record than the ward their mapped location falls in.
+          Membership is decided by the location, not by that field.
+          {report.audit_candidates > 0 && (
+            <>
+              {" "}
+              A further {formatCount(report.audit_candidates)} request
+              {report.audit_candidates === 1 ? " was" : "s were"} kept for audit because the City
+              labelled {report.audit_candidates === 1 ? "it" : "them"} Ward 20 while
+              {report.audit_candidates === 1 ? " its" : " their"} location could not be checked;
+              {report.audit_candidates === 1 ? " it is" : " they are"} counted in no figure above.
+            </>
+          )}
           {report.denominator === null && (
             <> No street-mileage denominator is available, so these are counts, not rates.</>
           )}

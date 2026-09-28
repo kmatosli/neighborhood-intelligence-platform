@@ -104,14 +104,45 @@ categories:
     status: not_yet_validated
 
 # Only categories marked `validated` may be published. The others are ingested and queryable
-# but have not had their closure semantics audited, so no completion statistic is offered for
+# but have not had their closure semantics audited, so no duration statistic is offered for
 # them yet. Potholes is the audited case.
 validated_categories:
   - potholes
 
 # ----------------------------------------------------------------------------------------
+# Retrieval universe, measured against the live source 2026-09-28.
+#
+# Bronze is built from TWO clauses, and `retrieval_reason` records which one produced each row:
+#   spatial_bounding_box        — the published point falls inside the Ward 20 bounding box.
+#   source_ward_audit_candidate — the SOURCE labels the record ward 20 but the spatial clause
+#                                 could not reach it, almost always because it has no point.
+#
+# The second clause exists because `within_box` cannot evaluate a record with no location and
+# drops it silently, which would have left the coordinate exclusion unmeasurable from our own
+# data. Source ward is a retrieval hint here and nowhere else: analytical membership is always
+# point-in-polygon, so an audit candidate without trustworthy coordinates is excluded with its
+# reason and counted in no figure.
+#
+# Measured size of the gap the second clause closes (counts from the portal):
+#   source ward 20, no coordinates        2024: 0     2025: 0     2026: 3
+#   source ward 20, coords outside box    2024: 1     2025: 0     2026: 0
+#   POTHOLES in either case               2024: 0     2025: 0     2026: 0
+# Citywide coordinate-less records are 1,062 / 1,135 / 1,584 a year out of ~1.9M (≈0.06–0.10%),
+# and 0 coordinate-less pothole records citywide carry ANY ward value, so no ward clause could
+# ever retrieve one. The residual blind spot — a coordinate-less record whose true location is
+# Ward 20 and whose source ward is null — is not retrievable by any clause and not attributable
+# to any ward even if it were. 1,055 of the 1,108 such records in 2025 carry no source geography
+# at all (no ward, ZIP, community area or address), so nothing else could stand in for a point.
+# ----------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------
 # Analytical exclusions. Excluded records STAY in Bronze and keep their original type; Silver
 # carries a flag and a reason, so every exclusion is countable and reversible.
+#
+# SERVICE-DEMAND exclusion and COORDINATE-QUALITY exclusion are different judgements and are
+# kept separate. An information-only call is excluded because it is not a request for service at
+# a place — on its own terms, regardless of where it geocoded. Its default coordinate is a
+# separate, independently detected condition. Neither rule depends on the other.
 # ----------------------------------------------------------------------------------------
 
 exclusions:
@@ -134,19 +165,27 @@ exclusions:
       legacy_record: true
 
 # ----------------------------------------------------------------------------------------
-# Closure semantics, audited per category. Nothing about completion time is published for a
-# category absent from this block.
+# Closure semantics, audited per category. No duration is published for a category absent from
+# this block.
+#
+# TERMINOLOGY, decided 2026-09-28 against the portal's own metadata. The dataset publishes NO
+# description for `closed_date` and NO description for `status`, and carries no resolution or
+# disposition code. Nothing in the source therefore establishes that a closed record means the
+# physical condition was repaired, or when. The measure is named for what it is — "days to
+# recorded closure" — and never "completion time", "response time" or "resolution time", each of
+# which would assert something the source does not support.
 #
 # POTHOLES, audited 2026-09-27 (507,569 records):
 #   status        Completed 492,763 · Open 13,993 · Canceled 813
 #   closed_date   present on exactly 493,576 = Completed + Canceled, absent on every Open row.
 # So closure is recorded consistently, but a Canceled request also carries a closed_date.
-# Counting cancellations as completions would understate how long work actually takes, so
-# duration is computed from Completed only.
+# Counting cancellations alongside closures would understate how long work actually takes, so
+# duration is computed from the City's own "Completed" status only. That status name is the
+# City's, quoted as data; it is not adopted as this project's description of the measure.
 #
 # What "Completed" does NOT establish: the dataset has no resolution or disposition code, so a
 # filled pothole, a request the crew could not locate, a condition already repaired, and a
-# referral elsewhere are indistinguishable. "Completed" means the request was closed, not that
+# referral elsewhere are indistinguishable. "Completed" means the record was closed, not that
 # a pothole was demonstrably filled. That limitation is published with every duration figure.
 # ----------------------------------------------------------------------------------------
 
@@ -160,9 +199,11 @@ closure_semantics:
     duration_excludes_duplicates: true
     open_records_excluded_from_duration: true
     notes: >-
-      Completion time is the interval from created_date to closed_date for primary Completed
-      requests. It is a measure of when the City closed the request, not proof that the
-      condition was repaired, because the source carries no resolution code.
+      Days to recorded closure is the interval from created_date to closed_date for primary
+      requests carrying the City's "Completed" status. It measures when the City marked the 311
+      record closed. It is not a completion time, a response time or a resolution time, and it
+      does not establish that the pothole was repaired or when: the portal publishes no
+      description for closed_date and no resolution code.
 
 # ----------------------------------------------------------------------------------------
 # Duplicate and linkage model. Audited 2026-09-27 on the pothole categories: all 157,958

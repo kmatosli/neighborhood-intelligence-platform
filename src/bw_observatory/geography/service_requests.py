@@ -243,7 +243,10 @@ def enrich_service_requests(
     spatial_ward, spatial_area = _place(latitude, longitude, usable, layers)
     out["spatial_ward_current"] = spatial_ward
     out["spatial_community_area"] = spatial_area
-    out["in_ward20"] = spatial_ward == ward_id
+    # False, not NA: a record with nothing to place is definitively not inside the ward. An NA in
+    # a column used as a filter mask is only ever safe by accident — the audit-candidate rows are
+    # what exposed it, because they are the first rows that reach Silver with no placement.
+    out["in_ward20"] = (spatial_ward == ward_id).fillna(False).astype(bool)
 
     # Source-reported geography is preserved and compared, never overwritten.
     out["source_ward"] = _column(frame, "ward")
@@ -281,6 +284,10 @@ def enrich_service_requests(
 
     out["boundary_vintage"] = layers.vintage
     out["source_dataset_id"] = _column(frame, "source_dataset_id").fillna(config.dataset_id)
+    # Which retrieval clause produced the row. An audit candidate — retrieved because the SOURCE
+    # labels it Ward 20, not because its point falls inside — is kept so the coordinate exclusion
+    # is countable from our own data. It is still placed by point-in-polygon or not at all.
+    out["retrieval_reason"] = _column(frame, "retrieval_reason")
 
     # Source-truth provenance, the same model the crime layers use. A refresh sees inserts and
     # edits because both restamp `last_modified_date`; it cannot see a record the City withdraws,
@@ -296,10 +303,11 @@ def enrich_service_requests(
 def duration_frame(
     silver: pd.DataFrame, category: str, config: ServiceRequestConfig
 ) -> pd.DataFrame:
-    """Rows eligible for a completion-time statistic, per the audited closure semantics.
+    """Rows eligible for a recorded-closure duration, per the audited closure semantics.
 
     Returns an empty frame for a category whose closure semantics have not been audited, which
-    is the point: a duration is published only where its meaning has been established.
+    is the point: a duration is published only where its meaning has been established. What the
+    interval measures is the gap between two source timestamps, not the work in between.
     """
     rules = config.closure_semantics.get(category)
     if not rules:

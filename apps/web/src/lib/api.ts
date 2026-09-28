@@ -714,12 +714,21 @@ export type ServiceCategoryReport = {
   monthly: { month: number; raw: number; primary: number }[];
   status: Record<string, number>;
   open_ages: Record<string, number | null>;
-  /** Absent when the category's closure semantics do not support a duration. */
-  completion: Record<string, unknown> | null;
+  /**
+   * Days to RECORDED CLOSURE — the gap between two administrative timestamps. Absent when the
+   * category's closure semantics do not support a duration. Never a completion, response or
+   * resolution time: the City documents neither `closed_date` nor `status` and publishes no
+   * resolution code, so a closed record does not establish that anything was repaired.
+   */
+  recorded_closure: Record<string, unknown> | null;
   portions: Record<string, unknown>[];
   repeat_addresses: Record<string, unknown>[];
+  /** Exclusions within THIS category. Empty means none were excluded, not that none were checked. */
   excluded_from_analysis: Record<string, number>;
+  /** Among the requests counted here: source ward differs from the mapped location. */
   source_ward_disagreement: number;
+  /** Retrieved because the source labels them Ward 20 though their point could not be tested. */
+  audit_candidates: number;
   /** Null means the figures are counts, not rates — no exposure measure is ingested. */
   denominator: string | null;
   methodology: string[];

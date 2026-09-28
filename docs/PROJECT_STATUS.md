@@ -300,33 +300,34 @@ production disk. Version 2 proceeds in numbered work packages.
     `source_removed` in Silver, keeps the first observation of the removal, restores a request
     that reappears, and reports upstream ids missing locally as a refresh gap rather than a
     withdrawal. Nothing is ever deleted; `current_source_view` excludes withdrawn rows from
-    every published figure. Logged per run and year. **Not yet run against the live source**, so
-    no withdrawal figure is claimed.
+    every published figure. Logged per run and year. **Run against the live source 2026-09-28**
+    for 2024–2026 (dry run, then real): local and source id sets identical in every year
+    (52,692 / 50,281 / 45,405), 0 withdrawn, 0 missing locally.
   - **Reproducible commands**, which did not exist before: `scripts/ingest_service_requests.py`
     (backfill / refresh / enrich-only) and `scripts/reconcile_service_requests.py`, both thin
     wrappers over `bw_observatory.ops.*`. The 311 data on disk had been produced ad hoc; it is
     now rebuildable. No 311 scheduler exists anywhere.
   - **API:** `/api/v1/city-services/years`, `/categories`, `/{category}/{geography_id}`. Every
     report carries the metadata needed to read it — period and comparison window, exclusions and
-    their reasons, the duplicate rule, the closure interpretation, provisional flag, source-ward
-    disagreement count and the explicit absence of a denominator. Ward 20 2025: 807 submitted,
-    550 primary, 257 duplicates (31.9%), against 1,010 in the same 2024 window; completion
-    median 5 days.
+    their reasons, the duplicate rule, what a recorded closure does and does not establish,
+    provisional flag, source-ward disagreement count and the explicit absence of a denominator.
+    Ward 20 2025: 807 submitted, 550 primary, 257 duplicates (31.8%), against 1,010 in the same
+    2024 window; median 5 days to recorded closure.
   - **UI:** `apps/web/src/components/PotholeServicePanel.tsx`, wired into Trends under
     "City Services — potholes", reading the shared `?geo=`/`?year=` context.
   - **Defects found and fixed while building:** the monthly series reported **0** for months a
     provisional year had not reached, which is a fabricated value in a bar chart — unreached
-    months are now omitted and the chart says so; a completion "median" was printed over a
+    months are now omitted and the chart says so; a closure-time "median" was printed over a
     single open request; an ISO date leaked into resident-facing copy; and the shared footer
     credited every count on the page to the crime dataset, which became wrong the moment a
     second dataset appeared.
   - **Known limits, stated rather than worked around:** only potholes has audited closure
     semantics; a closure does not establish a repair (the source carries no resolution code);
-    there is no street-mileage denominator, so these are counts and never rates; and records
-    without coordinates never reach Bronze at all, because the `within_box` pre-filter cannot
-    evaluate them — documented, and never implied to be zero.
-  - **Draft findings, not published.** `C-001` (pothole request change) and `C-002` (why so much
-    reporting is duplicated) are in `config/findings.yml` with `status: draft`, so they are not
+    there is no street-mileage denominator, so these are counts and never rates; and
+    coordinate-less records with no source ward cannot be retrieved by any query — bounded in
+    the methodology §5, and never implied to be zero.
+  - **Draft findings, not published.** `C-001` (pothole request change) and `C-002` (what lies
+    behind the duplicate share) are in `config/findings.yml` with `status: draft`, so they are not
     served; a test enforces that they stay unreviewed until the owner signs off. `G-002`, the
     city-services data gap, had become false once 311 was ingested and was corrected to describe
     the gap that actually remains; the correction is attributed to this change, not to the owner.
@@ -334,6 +335,16 @@ production disk. Version 2 proceeds in numbered work packages.
     (modulo the known `py.typed` packaging notice), tsc, prettier and the frontend build clean;
     the panel was rendered in a headless browser for Ward 20 2025, Woodlawn 2025 and the
     provisional 2026, with a clean console and no failed requests.
+  - **Pre-release governance (2026-09-28, local only — not pushed or deployed).** The duration is
+    now "days to recorded closure" (API field `recorded_closure`), never completion, response or
+    resolution time, because the portal documents neither `closed_date` nor `status`. Bronze is
+    retrieved by two clauses recorded in `retrieval_reason` — the spatial box plus a source-ward
+    `audit candidate` clause that is a retrieval hint only, never membership; it added 1 / 0 / 3
+    records (2024 / 2025 / 2026), none of them potholes, and changed no published figure. Pothole
+    exclusions and source-ward disagreement are now scoped to the category. Tests: 46 in
+    `tests/test_service_requests.py`; suite 302 passing, 2 skipped, 2 failing only because
+    Application Control blocks pyogrio in `test_geography.py` fixtures; mypy blocked by the same
+    policy on this machine.
 
 ## Next feature
 

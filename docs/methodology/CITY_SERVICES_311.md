@@ -98,12 +98,53 @@ The last verdict exists because of a measured behaviour: `311 INFORMATION ONLY C
 geocoded to a single fixed point, and **one coordinate (41.871831, −87.679846) carries 2,029,501
 records**. Placing those in a ward would invent an enormous false concentration.
 
-**Known limitation.** Because retrieval filters on `within_box(location, …)`, records with no
-coordinates are never retrieved, so coordinate-exclusion counts cannot be measured from the
-current Bronze — every ingested row scores `ok`. Citywide, potholes missing coordinates are 2,006
-of 507,569 (0.4%). A production ingest should make a second pass for null-coordinate records by
-source ward and store them flagged as unplaceable; until then this gap is stated rather than
-implied to be zero.
+### Retrieval and the coordinate blind spot (resolved 2026-09-28)
+
+`within_box(location, …)` cannot evaluate a record with no point, so it drops one silently. That
+conflicted with the Bronze principle — Bronze preserves source records; **Silver** decides what may
+enter spatial analysis — and it left coordinate exclusions unmeasurable from our own data.
+
+Bronze is now built from **two** clauses, and `retrieval_reason` records which produced each row:
+
+| `retrieval_reason` | Clause |
+|---|---|
+| `spatial_bounding_box` | the published point falls inside the Ward 20 bounding box |
+| `source_ward_audit_candidate` | the **source** labels the record ward 20, but the spatial clause could not reach it |
+
+The second clause is a **retrieval hint only**. Source ward never grants membership: Silver still
+places by point-in-polygon, so an audit candidate with no trustworthy coordinates is excluded with
+its reason and counted in no published figure. The API reports them separately as
+`audit_candidates`.
+
+**Measured size of the gap, from the portal, 2026-09-28:**
+
+| Population | 2024 | 2025 | 2026 |
+|---|---|---|---|
+| source ward 20, no coordinates | 0 | 0 | 3 |
+| source ward 20, coordinates outside the box | 1 | 0 | 0 |
+| **potholes** in either case | **0** | **0** | **0** |
+| citywide coordinate-less records | 1,062 | 1,135 | 1,584 |
+| citywide records that year | 1,913,929 | 1,960,595 | 1,620,666 |
+
+So the gap the second clause closes is **4 records across three years, and no potholes at all.**
+Adding it changed no published figure, which was verified by rebuilding and recomputing.
+
+**The residual blind spot, and why no clause can close it.** A coordinate-less record whose true
+location is Ward 20 but whose source `ward` is null cannot be retrieved by a ward clause and could
+not be attributed to a ward even if it were. Bounds: **zero** coordinate-less pothole records
+citywide carry any ward value in 2025 or 2026, so no ward clause could ever retrieve one; and of
+the 1,108 coordinate-less ward-null records in 2025, only **53** carry any other source geography
+(ZIP, community area or address), leaving 1,055 with nothing that could stand in for a point.
+Coordinate-less records are 0.06–0.10% of the dataset. Scaling citywide coordinate-less potholes
+(83 / 97 / 215) by Ward 20's share of citywide pothole volume (4.5% / 4.1% / 3.2%) suggests
+**single digits per year**, none of them identifiable as Ward 20. This is stated, never treated as
+zero, and never estimated into a published figure.
+
+**Effect on other categories.** The same measurement is category-independent, but the exposure is
+not: the 2026 audit candidates are two `CHECKFOR` and one `AAE` record, not potholes. A category
+whose requests are more often filed without an address — anything phoned in about a condition
+rather than a location — would carry a larger share, so this measurement is repeated per category
+before that category is published rather than inherited from potholes.
 
 ## 6. Information-only calls
 
@@ -111,16 +152,54 @@ implied to be zero.
 and the largest single `sr_type` by a wide margin. It records someone asking a question, not a
 request for service at a place.
 
-Treatment: **retained in Bronze with its original type**, flagged in Silver with
-`analytical_inclusion = false` and `exclusion_reason = information_only_call`, and excluded from
-every service-demand and geographic figure. Within the ingested Ward 20 box this removes 2,104
-records in 2024, 2,040 in 2025 and 1,551 in 2026, each reported on the relevant response.
+Treatment: **retained in Bronze with its original type and every source value intact**, flagged
+in Silver with `analytical_inclusion = false` and `exclusion_reason = information_only_call`, and
+excluded from every service-demand and geographic figure. Within the ingested Ward 20 box this
+removes 2,104 records in 2024, 2,040 in 2025 and 1,551 in 2026.
+
+**Two separate judgements, and neither depends on the other.**
+
+- **Service-demand exclusion.** An information-only call is not a request for a service at a place.
+  It is excluded on that ground alone, matched on `sr_short_code = 311IOC`, wherever it geocoded.
+- **Coordinate-quality exclusion.** `repeated_default_point` is a separate, independently detected
+  condition that fires on any coordinate shared by ≥1,000 records.
+
+That the two are independent is **demonstrable in our own data**: every information-only call in
+the Ward 20 partitions scores `coordinate_quality = ok`, because the 311 Center default point
+(41.871831, −87.679846) lies at latitude 41.8718, **north of the Ward 20 bounding box** (41.7729 to
+41.8177) and therefore outside it. The default-point rule never fires inside Ward 20, and the calls
+are excluded anyway. A system relying on the coordinate rule alone would have included all 5,695 of
+them. The City documents the behaviour itself, in the dataset description: *"requests of the type
+311 INFORMATION ONLY CALL often are entered with the address of the City's 311 Center."*
+
+These figures are reported on the response for the category they belong to, and **not** on
+another's: a pothole report lists pothole exclusions only. Counted across the partition, the
+information-only calls alone would have appeared on the pothole panel as "2,040 excluded", which a
+reader would reasonably take for 2,040 pothole requests that had been dropped.
 
 ## 7. Closure semantics — audited per category
 
-**No completion-time statistic is published for a category until its closure semantics have been
-audited.** `config/service_requests.yml` holds the audit; a category absent from it returns no
-duration, which is a real answer rather than a gap.
+**No duration is published for a category until its closure semantics have been audited.**
+`config/service_requests.yml` holds the audit; a category absent from it returns no duration, which
+is a real answer rather than a gap.
+
+### What the measure is called, and why (determined 2026-09-28)
+
+The portal's own metadata for `v6vf-nfxy` publishes **no description for `closed_date`** and **no
+description for `status`**, and the dataset carries **no resolution or disposition code**. Nothing
+in the source therefore establishes that a closed record means the physical condition was repaired,
+or when it was repaired.
+
+The published term is **"days to recorded closure"**. The terms *completion time*, *response time*
+and *resolution time* are not used anywhere in the payload, the panel, the config or this document,
+because each asserts something the source does not support. The API field is `recorded_closure`,
+and it carries a `measures` string naming its own two timestamps — "days from the source
+created_date to the source closed_date" — so the measure cannot be quietly re-described later.
+Tests fail if any of the forbidden words reappears in published text or in the panel's rendered
+body.
+
+The City's own status value `Completed` is quoted as **data** where it must be (`statuses_counted`),
+and is never adopted as this project's description of the measure.
 
 **Potholes (507,569 records citywide), audited 2026-09-27:**
 
@@ -132,8 +211,8 @@ duration, which is a real answer rather than a gap.
 
 `closed_date` is present on exactly 493,576 records = Completed + Canceled, and absent on every
 Open row. Closure is recorded consistently — but a **cancellation also carries a closed date**, so
-counting cancellations as completions would make the City look faster than it was. Duration is
-computed from **Completed only**.
+counting cancellations alongside other closures would shorten the measured interval for a reason
+unrelated to the request. Duration is computed from the City's own **Completed** status only.
 
 Duplicates are also excluded from duration: a duplicate closes when its parent is resolved, so
 its interval measures the linkage rather than the work, and 31% of pothole records are duplicates
@@ -141,9 +220,9 @@ its interval measures the linkage rather than the work, and 31% of pothole recor
 
 **What "Completed" does not establish.** The source carries no resolution or disposition code, so
 a filled pothole, a request the crew could not locate, a condition already repaired, and a
-referral elsewhere are **indistinguishable**. Completion time measures when the City closed the
-request. It is not evidence that a pothole was filled, and every duration figure carries that
-sentence.
+referral elsewhere are **indistinguishable**. The measure records when the City marked the 311
+record closed. It is not evidence that a pothole was filled, and every duration figure carries that
+sentence on screen.
 
 A closure timestamped before creation is treated as a source contradiction and excluded, not as a
 negative duration.
@@ -268,8 +347,8 @@ Ward 20, mapped spatially, analytically included: **1,010 (2024) · 807 (2025) �
 - **Comparable periods.** A partial year is compared with the same month and day of the prior
   year, never with a completed year. Date windows are inclusive of the final day, because
   `created_at` carries a time of day.
-- **Distributions, not means.** Completion times are strongly skewed — Ward 20 potholes in 2025:
-  median 5.0 days, p25 0.0, p75 46.0, p90 132.2 — so median and quartiles are published and a
+- **Distributions, not means.** Days to recorded closure are strongly skewed — Ward 20 potholes in
+  2025: median 5.0 days, p25 0.0, p75 46.0, p90 132.2 — so median and quartiles are published and a
   bare mean is not.
 - **No denominator is invented.** Potholes would need street mileage or roadway-network exposure
   to become a rate. The City's street centre-line layer has no working API export, so none is
@@ -282,7 +361,10 @@ Ward 20, mapped spatially, analytically included: **1,010 (2024) · 807 (2025) �
 
 ## 15. Known data-quality issues
 
-1. Coordinate-less records are absent from Bronze because of the bounding-box pre-filter (§5).
+1. ~~Coordinate-less records are absent from Bronze because of the bounding-box pre-filter.~~
+   Resolved 2026-09-28: Bronze now also retrieves records the source labels ward 20, so the
+   exclusion is measurable (§5). A residual blind spot remains for coordinate-less records with no
+   source ward, bounded and stated in §5 — it cannot be closed by any query.
 2. `sr_type` wording drifts; `sr_short_code` is the stable key.
 3. One live type is labelled "NO LONGER BEING ACCEPTED" yet still receives records.
 4. Legacy (pre-2019) rows use a different schema and taxonomy and are excluded from analysis.
@@ -291,7 +373,9 @@ Ward 20, mapped spatially, analytically included: **1,010 (2024) · 807 (2025) �
 7. `uncategorized` is the largest bucket in Ward 20 (8,163 records in 2025) because only eight
    categories are defined so far — visible by design, not hidden.
 8. Only **potholes** has audited closure semantics; every other category is ingested and
-   queryable but publishes no completion statistic.
+   queryable but publishes no duration.
+9. The City publishes no description for `closed_date` or `status`, which is why the measure is
+   named for the record's closure and not for the work (§7).
 
 ## 16. Interpretation guardrails
 
@@ -300,7 +384,11 @@ Required wherever a City Services figure appears:
 - These are **reported requests**, not a count of conditions and not a measure of City performance.
 - Ward membership is decided by placing the published coordinates in the current Ward 20
   boundary, never by the ward recorded on the request.
-- Raw and primary counts mean different things; both are shown.
-- A closure means the request was closed, not that the condition was repaired.
+- Raw and primary counts mean different things; both are shown, and **neither is a count of
+  potholes**. One condition can produce one report, several independent reports, or none, and the
+  City's duplicate flag links only the records its own process recognised as related. Requests are
+  never grouped by proximity.
+- A recorded closure means the City marked the record closed, not that the condition was repaired,
+  and not when it was repaired.
 - Without a street-mileage denominator these are counts, not rates, and areas are not ranked.
 - A period near the edge of the data is provisional and its counts will rise.

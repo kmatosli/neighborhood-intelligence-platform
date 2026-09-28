@@ -21,10 +21,11 @@ Source-truth model, identical to crime (V2-004A) on purpose — one model, two d
   removed, still removed, reappeared, and — the case that means a refresh gap — present in the
   source but absent locally. "Removed" asserts nothing about why.
 
-The comparison window must match the ingest filter exactly. Bronze holds the records inside the
-Ward 20 bounding box whose `created_date` falls in the year, so the id query applies the same
-box and the same date range. Widening it would report every record elsewhere in Chicago as
-missing locally; narrowing it would report records we correctly hold as withdrawn.
+The comparison window must match the ingest filter exactly, so both call the same
+`retrieval_clauses` — the spatial bounding box PLUS the supplemental source-ward clause that
+keeps coordinate-less audit candidates in Bronze. Comparing against the spatial clause alone
+would report every audit candidate as withdrawn on the first run; comparing against something
+wider would report records elsewhere in Chicago as missing locally.
 
 One caveat this does not pretend to resolve: a record whose `created_date` the City *edits*
 across a year boundary leaves the window of the year we filed it under. It is counted as removed
@@ -63,8 +64,8 @@ from bw_observatory.ingest.service_requests import (
     bronze_dir,
     bronze_path,
     load_service_request_config,
+    retrieval_clauses,
     silver_path,
-    source_where_clause,
     ward_bounding_box,
     years_on_disk,
 )
@@ -131,11 +132,13 @@ class ServiceRequestReconciler:
         *,
         client: ChicagoDataClient | None = None,
         reference_version: str = "2026-07-12",
+        ward_id: str = "20",
     ) -> None:
         self.settings = settings
         self.config = load_service_request_config()
         self.client = client or ChicagoDataClient(settings)
         self.reference_version = reference_version
+        self.ward_id = ward_id
         self.log = download_logger()
         self.api_log = api_logger()
 
@@ -160,30 +163,37 @@ class ServiceRequestReconciler:
     # -- source ids ---------------------------------------------------------------------
 
     def source_ids(self, year: int) -> set[str]:
-        """Every id the source currently returns for the year, inside the ingest bounding box.
+        """Every id the source currently returns for the year, across the whole ingest universe.
 
         Ids alone are a fraction of the row payload, so a year is a handful of requests rather
         than a re-download. The order is explicit because Socrata promises none without it, and
         paging an unordered query can repeat or skip rows.
         """
         box = ward_bounding_box(self.settings.data_dir, self.reference_version)
-        where = source_where_clause(box, year=year)
         ids: set[str] = set()
-        offset = 0
-        while True:
-            self.api_log.info("GET 311 ids year=%d offset=%d limit=%d", year, offset, PAGE_SIZE)
-            page = self.client.get_records(
-                self.config.dataset_id,
-                limit=PAGE_SIZE,
-                offset=offset,
-                where=where,
-                order=self.id_column,
-                select=self.id_column,
-            )
-            ids.update(str(row[self.id_column]) for row in page if row.get(self.id_column))
-            if len(page) < PAGE_SIZE:
-                return ids
-            offset += PAGE_SIZE
+        for reason, where in retrieval_clauses(box, self.ward_id, year=year):
+            offset = 0
+            while True:
+                self.api_log.info(
+                    "GET 311 ids year=%d clause=%s offset=%d limit=%d",
+                    year,
+                    reason,
+                    offset,
+                    PAGE_SIZE,
+                )
+                page = self.client.get_records(
+                    self.config.dataset_id,
+                    limit=PAGE_SIZE,
+                    offset=offset,
+                    where=where,
+                    order=self.id_column,
+                    select=self.id_column,
+                )
+                ids.update(str(row[self.id_column]) for row in page if row.get(self.id_column))
+                if len(page) < PAGE_SIZE:
+                    break
+                offset += PAGE_SIZE
+        return ids
 
     # -- run ----------------------------------------------------------------------------
 

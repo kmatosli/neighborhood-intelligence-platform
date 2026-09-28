@@ -74,6 +74,9 @@ SOURCE_COLUMNS = (
     "longitude",
 )
 
+#: Bronze column recording which retrieval clause produced the row.
+RETRIEVAL_REASON_COLUMN = "retrieval_reason"
+
 MANIFEST_FILENAME = "manifest.parquet"
 REFRESH_LOG_FILENAME = "refresh_log.parquet"
 
@@ -264,19 +267,65 @@ def ward_bounding_box(data_dir: Path, reference_version: str) -> tuple[float, fl
     return minx, miny, maxx, maxy
 
 
-def source_where_clause(
-    box: tuple[float, float, float, float], *, year: int, since: str | None = None
-) -> str:
-    minx, miny, maxx, maxy = box
-    # Socrata's within_box takes (north latitude, west longitude, south latitude, east longitude).
+#: Why a record was retrieved. Recorded on every Bronze row, because the two populations answer
+#: different questions and must stay distinguishable after the fact.
+RETRIEVAL_SPATIAL = "spatial_bounding_box"
+RETRIEVAL_SOURCE_WARD = "source_ward_audit_candidate"
+
+
+def _period_clause(year: int, since: str | None) -> str:
     clause = (
-        f"within_box(location, {maxy}, {minx}, {miny}, {maxx})"
-        f" AND created_date >= '{year}-01-01T00:00:00'"
-        f" AND created_date < '{year + 1}-01-01T00:00:00'"
+        f"created_date >= '{year}-01-01T00:00:00' AND created_date < '{year + 1}-01-01T00:00:00'"
     )
     if since:
         clause += f" AND last_modified_date > '{since}'"
     return clause
+
+
+def source_where_clause(
+    box: tuple[float, float, float, float], *, year: int, since: str | None = None
+) -> str:
+    """The spatial retrieval clause: records whose published point falls in the bounding box."""
+    minx, miny, maxx, maxy = box
+    # Socrata's within_box takes (north latitude, west longitude, south latitude, east longitude).
+    return f"within_box(location, {maxy}, {minx}, {miny}, {maxx}) AND {_period_clause(year, since)}"
+
+
+def audit_candidate_where_clause(ward_id: str, *, year: int, since: str | None = None) -> str:
+    """The supplemental retrieval clause: records the SOURCE labels with this ward.
+
+    This exists so Bronze can preserve records the City associates with Ward 20 that the spatial
+    clause cannot reach — a record with no coordinates has no point to test, and `within_box`
+    silently drops it. Retrieval and membership are different questions: these rows are kept so
+    the coordinate exclusion is measurable from our own Bronze instead of only from live probes.
+
+    The source `ward` is used here, and ONLY here, as a retrieval hint. It never grants Ward 20
+    analytical membership — Silver still decides that by point-in-polygon, and a record without
+    trustworthy coordinates is excluded with its reason.
+    """
+    return f"ward = '{ward_id}' AND {_period_clause(year, since)}"
+
+
+def retrieval_clauses(
+    box: tuple[float, float, float, float],
+    ward_id: str,
+    *,
+    year: int,
+    since: str | None = None,
+) -> list[tuple[str, str]]:
+    """Every clause that defines the retrieval universe, paired with its reason.
+
+    One function, used by both the ingest and the reconciler, because a reconciliation that
+    compared a different universe than the ingest built would report its own filter as if the
+    City had withdrawn records.
+    """
+    return [
+        (RETRIEVAL_SPATIAL, source_where_clause(box, year=year, since=since)),
+        (
+            RETRIEVAL_SOURCE_WARD,
+            audit_candidate_where_clause(ward_id, year=year, since=since),
+        ),
+    ]
 
 
 @dataclass
@@ -298,24 +347,25 @@ class ServiceRequestIngest:
         client: ChicagoDataClient | None = None,
         reference_version: str = "2026-07-12",
         page_size: int = BATCH_ROWS,
+        ward_id: str = "20",
     ) -> None:
         self.settings = settings
         self.config = load_service_request_config()
         self.client = client or ChicagoDataClient(settings)
         self.reference_version = reference_version
         self.page_size = page_size
+        self.ward_id = ward_id
         self.log = download_logger()
 
     def bounding_box(self) -> tuple[float, float, float, float]:
         return ward_bounding_box(self.settings.data_dir, self.reference_version)
 
-    def fetch_year(self, year: int, *, since: str | None = None) -> list[dict[str, Any]]:
-        """Every record for one year inside the bounding box, paged and ordered stably.
+    def _fetch_clause(self, year: int, where: str, reason: str) -> list[dict[str, Any]]:
+        """Every record one clause returns, paged and ordered stably.
 
         Ordering by `sr_number` matters: Socrata gives no stable order without one, so paging
         an unordered query can repeat or skip rows.
         """
-        where = source_where_clause(self.bounding_box(), year=year, since=since)
         select = ",".join(SOURCE_COLUMNS)
         records: list[dict[str, Any]] = []
         offset = 0
@@ -328,12 +378,68 @@ class ServiceRequestIngest:
                 order="sr_number",
                 select=select,
             )
-            records.extend(page)
-            self.log.info("311 %s: fetched %d rows (total %d)", year, len(page), len(records))
+            # A new dict per row rather than stamping the reason onto the caller's: two clauses
+            # can return the same record, and mutating a shared dict would let the second pass
+            # relabel the first pass's rows.
+            records.extend({**row, RETRIEVAL_REASON_COLUMN: reason} for row in page)
+            self.log.info(
+                "311 %s (%s): fetched %d rows (total %d)", year, reason, len(page), len(records)
+            )
             if len(page) < self.page_size:
                 break
             offset += self.page_size
         return records
+
+    def fetch_year(self, year: int, *, since: str | None = None) -> list[dict[str, Any]]:
+        """Every record for one year in the retrieval universe: the bounding box, plus the
+        records the source itself labels with this ward.
+
+        The second clause is what makes the coordinate exclusion measurable. A record with no
+        published point cannot be tested by `within_box`, so the spatial clause drops it
+        silently; keeping it in Bronze means the exclusion can be counted from our own data.
+        It changes no published figure — Silver refuses to place a record without trustworthy
+        coordinates, whatever the source says its ward is.
+
+        Deduplication keeps the spatial retrieval where both clauses match the same record, so
+        `retrieval_reason` names the stronger evidence rather than whichever query ran last.
+        """
+        records: list[dict[str, Any]] = []
+        for reason, where in retrieval_clauses(
+            self.bounding_box(), self.ward_id, year=year, since=since
+        ):
+            records.extend(self._fetch_clause(year, where, reason))
+        return records
+
+    def _conform(self, records: list[dict[str, Any]]) -> pd.DataFrame:
+        """Source records as a Bronze-shaped frame: every source column, all text, plus
+        provenance. Nothing is coerced or dropped."""
+        frame = pd.DataFrame(records)
+        for column in (*SOURCE_COLUMNS, RETRIEVAL_REASON_COLUMN):
+            if column not in frame.columns:
+                frame[column] = pd.NA
+        frame = frame[[*SOURCE_COLUMNS, RETRIEVAL_REASON_COLUMN]].astype("string")
+        # Provenance every row carries, so a partition can always say where it came from.
+        frame["source_dataset_id"] = self.config.dataset_id
+        frame["ingested_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+        return frame
+
+    def _dedupe(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """One row per `sr_number`, preferring the spatial retrieval when both clauses matched.
+
+        Order matters for the reason, not the row: the source columns are identical either way,
+        but `retrieval_reason` must name the stronger evidence. A stable sort on the preference
+        rank keeps the spatial row first, so `keep="first"` resolves it.
+        """
+        rank = (
+            frame[RETRIEVAL_REASON_COLUMN]
+            .map({RETRIEVAL_SPATIAL: 0, RETRIEVAL_SOURCE_WARD: 1})
+            .fillna(2)
+        )
+        ordered = frame.assign(_rank=rank).sort_values(
+            [self.config.id_column, "_rank"], kind="stable"
+        )
+        ordered = ordered.drop_duplicates(subset=[self.config.id_column], keep="first")
+        return ordered.drop(columns="_rank").reset_index(drop=True)
 
     def write_bronze(self, year: int, records: list[dict[str, Any]]) -> IngestResult:
         """Publish one year's Bronze partition and its manifest row."""
@@ -341,18 +447,7 @@ class ServiceRequestIngest:
         if not records:
             return result
 
-        frame = pd.DataFrame(records)
-        for column in SOURCE_COLUMNS:
-            if column not in frame.columns:
-                frame[column] = pd.NA
-        frame = frame[list(SOURCE_COLUMNS)].astype("string")
-        # Provenance every row carries, so a partition can always say where it came from.
-        frame["source_dataset_id"] = self.config.dataset_id
-        frame["ingested_at"] = datetime.now(UTC).isoformat(timespec="seconds")
-
-        frame = frame.drop_duplicates(subset=[self.config.id_column], keep="last")
-        frame = frame.sort_values(self.config.id_column).reset_index(drop=True)
-
+        frame = self._dedupe(self._conform(records))
         target = bronze_path(self.settings.data_dir, year)
         write_parquet_atomic(frame, target)
 
@@ -403,16 +498,16 @@ class ServiceRequestIngest:
             return IngestResult(year=year, rows_fetched=0, watermark=since)
 
         target = bronze_path(self.settings.data_dir, year)
-        incoming = pd.DataFrame(fetched)
-        for column in SOURCE_COLUMNS:
-            if column not in incoming.columns:
-                incoming[column] = pd.NA
-        incoming = incoming[list(SOURCE_COLUMNS)].astype("string")
-        incoming["source_dataset_id"] = self.config.dataset_id
-        incoming["ingested_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+        # Resolve the two retrieval clauses against each other first, then let the refreshed row
+        # win over the stored one: `keep="last"` is what makes the upsert an upsert.
+        incoming = self._dedupe(self._conform(fetched))
 
         if target.exists():
             existing = pd.read_parquet(target)
+            if RETRIEVAL_REASON_COLUMN not in existing.columns:
+                # A partition written before retrieval reasons existed. Its rows came from the
+                # spatial clause, which was the only one there was.
+                existing[RETRIEVAL_REASON_COLUMN] = RETRIEVAL_SPATIAL
             merged = pd.concat([existing, incoming], ignore_index=True)
             merged = merged.drop_duplicates(subset=[self.config.id_column], keep="last")
         else:

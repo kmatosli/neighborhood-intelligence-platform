@@ -2,8 +2,9 @@
 
 Every response carries the metadata a reader needs to interpret it: the geography and how it was
 decided, the period and its comparison window, what was excluded and why, the duplicate rule,
-the closure interpretation, whether the period is still filling in, and whether any denominator
-was used. A figure without that context is not publishable, so the API does not offer one.
+what a recorded closure does and does not establish, whether the period is still filling in, and
+whether any denominator was used. A figure without that context is not publishable, so the API
+does not offer one.
 
 Only categories whose closure semantics have been audited are served; asking for another returns
 an honest 404 naming the reason rather than an unaudited number.
@@ -76,12 +77,18 @@ class CategoryReportResponse(BaseModel):
     monthly: list[dict[str, int]]
     status: dict[str, int]
     open_ages: dict[str, float | int | None]
-    #: Absent when the category's closure semantics do not support a duration.
-    completion: dict[str, object] | None
+    #: Days to RECORDED CLOSURE — the interval between two administrative timestamps. Absent
+    #: when the category's closure semantics do not support a duration. Never a completion or
+    #: response time: the portal documents neither `closed_date` nor `status`, and publishes no
+    #: resolution code, so a closed record does not establish a repair.
+    recorded_closure: dict[str, object] | None
     portions: list[dict[str, object]]
     repeat_addresses: list[dict[str, object]]
 
     excluded_from_analysis: dict[str, int]
+    #: Records retrieved because the SOURCE labels them Ward 20 while the spatial clause could not
+    #: reach them — the measurable size of the coordinate blind spot. Counted in no figure here.
+    audit_candidates: int
     source_ward_disagreement: int
     denominator: str | None
     methodology: list[str]
@@ -162,10 +169,11 @@ def get_category_report(
         monthly=report.monthly,
         status=report.status,
         open_ages=report.open_ages,
-        completion=report.completion,
+        recorded_closure=report.recorded_closure,
         portions=report.portions,
         repeat_addresses=report.repeat_addresses,
         excluded_from_analysis=report.excluded_from_analysis,
+        audit_candidates=report.audit_candidates,
         source_ward_disagreement=report.source_ward_disagreement,
         denominator=report.denominator,
         methodology=report.methodology,

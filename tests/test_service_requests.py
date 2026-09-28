@@ -34,12 +34,17 @@ from bw_observatory.ingest.service_request_reconcile import (
     ServiceRequestReconciler,
 )
 from bw_observatory.ingest.service_requests import (
+    RETRIEVAL_SOURCE_WARD,
+    RETRIEVAL_SPATIAL,
     SOURCE_COLUMNS,
     ServiceRequestConfigError,
     ServiceRequestIngest,
+    audit_candidate_where_clause,
     bronze_path,
     load_service_request_config,
+    retrieval_clauses,
     silver_path,
+    source_where_clause,
     write_parquet_atomic,
 )
 from bw_observatory.presentation.city_services import (
@@ -381,11 +386,17 @@ def test_the_final_day_of_a_window_is_included() -> None:
 
 
 def _release(
-    root: Path, layers: ReferenceLayers, rows_by_year: dict[int, list[dict[str, Any]]]
+    root: Path,
+    layers: ReferenceLayers,
+    rows_by_year: dict[int, list[dict[str, Any]]],
+    reasons: dict[int, list[str]] | None = None,
 ) -> Path:
+    """A release on disk. `reasons` sets each row's retrieval clause; the default is the spatial
+    one, which is what the overwhelming majority of rows are."""
     config = load_service_request_config()
     for year, rows in rows_by_year.items():
         bronze = _bronze(rows)
+        bronze["retrieval_reason"] = (reasons or {}).get(year, [RETRIEVAL_SPATIAL] * len(rows))
         write_parquet_atomic(bronze, bronze_path(root, year))
         write_parquet_atomic(
             enrich_service_requests(bronze, year, config, layers), silver_path(root, year)
@@ -435,7 +446,10 @@ def test_the_report_states_its_exclusions_geography_and_limits(
     root = _release(tmp_path, layers, {2025: rows})
     report = build_category_report(root, 2025, "ward20", "potholes")
 
-    assert report.excluded_from_analysis["information_only_call"] == 1
+    # The information-only call is excluded from the partition, but it was never a pothole
+    # request, so a pothole report must not list it as something these figures dropped. Scoped
+    # across the partition this read "2,040 information only call" on the pothole panel.
+    assert "information_only_call" not in report.excluded_from_analysis
     assert report.denominator is None, "no street-mileage denominator is ingested"
     joined = " ".join(report.methodology).lower()
     assert "not a measure of how well the city performs" in joined
@@ -507,13 +521,22 @@ def _ingest(tmp_path: Path, client: _FakeClient, monkeypatch: pytest.MonkeyPatch
 def test_pagination_retrieves_every_page_with_a_stable_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Each retrieval clause is paged to exhaustion, and every row is stamped with the clause
+    that produced it. The fake serves the same pages to both clauses, so the ids repeat here —
+    the deduplication that resolves that is `write_bronze`'s job, tested separately."""
     client = _FakeClient([[_row(sr_number="A"), _row(sr_number="B")], [_row(sr_number="C")]])
     ingest = _ingest(tmp_path, client, monkeypatch)
     records = ingest.fetch_year(2025)
 
-    assert [r["sr_number"] for r in records] == ["A", "B", "C"]
+    assert [r["sr_number"] for r in records] == ["A", "B", "C", "A", "B", "C"]
+    assert [r["retrieval_reason"] for r in records] == (
+        [RETRIEVAL_SPATIAL] * 3 + [RETRIEVAL_SOURCE_WARD] * 3
+    )
     # Socrata gives no stable order without one, so paging unordered can repeat or skip rows.
     assert all(call["order"] == "sr_number" for call in client.calls)
+    # The spatial clause is asked first, so a record matching both keeps the stronger reason.
+    assert "within_box" in client.calls[0]["where"]
+    assert "ward = '20'" in client.calls[-1]["where"]
 
 
 def test_bronze_write_is_deduplicated_and_carries_provenance(
@@ -829,3 +852,207 @@ def test_the_api_refuses_an_unknown_or_unavailable_geography_honestly(
         assert response.json()["detail"], geography_id
 
     assert client.get("/api/v1/city-services/potholes/ward20?year=2026").status_code == 200
+
+
+# -- terminology ------------------------------------------------------------------------
+#
+# The City publishes no description for `closed_date` and no resolution code, so nothing in the
+# source establishes that a closed record means a repair. These tests exist so the word cannot
+# drift back: "completion time", "response time" and "resolution time" would each assert
+# something the data does not support, and a reviewer cannot be expected to re-catch it by eye.
+
+#: Words that would claim more than a pair of administrative timestamps supports.
+FORBIDDEN_IN_PUBLIC_TEXT = ("completion", "completed in", "response time", "resolution time")
+
+
+def _public_strings(report: Any) -> list[str]:
+    """Every string the API hands the browser for this report."""
+    strings = list(report.methodology)
+    if report.recorded_closure:
+        strings += [v for v in report.recorded_closure.values() if isinstance(v, str)]
+    return strings
+
+
+def _pothole_year(count: int, year: int) -> list[dict[str, Any]]:
+    return [
+        _row(sr_number=f"P{i}", created_date=f"{year}-0{(i % 5) + 1}-10T09:00:00.000")
+        for i in range(count)
+    ]
+
+
+def test_no_published_string_calls_the_duration_a_completion(
+    tmp_path: Path, layers: ReferenceLayers
+) -> None:
+    root = _release(tmp_path, layers, {2025: _pothole_year(20, 2025)})
+    report = build_category_report(root, 2025, "ward20", "potholes")
+
+    for text in _public_strings(report):
+        lowered = text.lower()
+        for forbidden in FORBIDDEN_IN_PUBLIC_TEXT:
+            assert forbidden not in lowered, f"{forbidden!r} appears in published text: {text}"
+
+
+def test_the_duration_states_that_a_closure_is_not_a_repair(
+    tmp_path: Path, layers: ReferenceLayers
+) -> None:
+    root = _release(tmp_path, layers, {2025: _pothole_year(20, 2025)})
+    report = build_category_report(root, 2025, "ward20", "potholes")
+
+    assert report.recorded_closure is not None
+    interpretation = str(report.recorded_closure["interpretation"]).lower()
+    assert "does not establish" in interpretation
+    assert "repair" in interpretation
+    # The measure names its own two timestamps, so it cannot be quietly re-described later.
+    assert report.recorded_closure["measures"] == (
+        "days from the source created_date to the source closed_date"
+    )
+
+
+def test_the_panel_does_not_reintroduce_completion_language() -> None:
+    """The wording lives in the config, the API payload and the panel. A test on the payload
+    alone would not stop someone relabelling the tile in the browser."""
+    panel = Path("apps/web/src/components/PotholeServicePanel.tsx").read_text(encoding="utf-8")
+    # Comments explain why the word is banned, so only the rendered body is checked.
+    rendered = [
+        line for line in panel.splitlines() if not line.lstrip().startswith(("*", "//", "/*"))
+    ]
+    body = chr(10).join(rendered).lower()
+    for forbidden in ("completion time", "response time", "resolution time", "was repaired"):
+        assert forbidden not in body, f"{forbidden!r} is back in the panel"
+    assert "days to recorded closure" in body
+
+
+# -- retrieval universe -----------------------------------------------------------------
+#
+# Bronze is built from two clauses. The second exists so a coordinate-less record the City labels
+# Ward 20 is preserved and countable, not so it can be attributed to Ward 20.
+
+
+def test_the_retrieval_universe_is_the_same_for_ingest_and_reconciliation() -> None:
+    """If these diverged, reconciliation would report its own narrower filter as if the City had
+    withdrawn every audit candidate."""
+    box = (-87.65, 41.78, -87.60, 41.81)
+    clauses = retrieval_clauses(box, "20", year=2025)
+
+    assert [reason for reason, _ in clauses] == [RETRIEVAL_SPATIAL, RETRIEVAL_SOURCE_WARD]
+    assert clauses[0][1] == source_where_clause(box, year=2025)
+    assert clauses[1][1] == audit_candidate_where_clause("20", year=2025)
+    # Both clauses carry the same half-open period, or the populations would not align.
+    for _, clause in clauses:
+        assert "created_date >= '2025-01-01T00:00:00'" in clause
+        assert "created_date < '2026-01-01T00:00:00'" in clause
+
+
+def test_an_audit_candidate_is_preserved_but_never_placed_in_ward_20(
+    layers: ReferenceLayers,
+) -> None:
+    """The point of the supplemental clause: the record survives into Silver, and the source's own
+    ward label buys it nothing analytically."""
+    inside = _row(sr_number="IN1", created_date="2025-03-04T09:00:00.000")
+    candidate = _row(
+        sr_number="CAND1",
+        created_date="2025-03-05T09:00:00.000",
+        latitude=None,
+        longitude=None,
+        ward="20",
+    )
+    bronze = _bronze([inside, candidate])
+    bronze["retrieval_reason"] = [RETRIEVAL_SPATIAL, RETRIEVAL_SOURCE_WARD]
+    silver = enrich_service_requests(bronze, 2025, load_service_request_config(), layers).set_index(
+        "sr_number"
+    )
+
+    assert len(silver) == 2, "nothing is dropped at the Silver boundary"
+    assert silver.loc["CAND1", "coordinate_quality"] == "missing"
+    assert not bool(silver.loc["CAND1", "analytical_inclusion"])
+    assert silver.loc["CAND1", "exclusion_reason"] == "coordinate_missing"
+    # Source ward 20 is a retrieval hint and nothing more.
+    assert not bool(silver.loc["CAND1", "in_ward20"])
+    assert pd.isna(silver.loc["CAND1", "spatial_ward_current"])
+    assert bool(silver.loc["IN1", "in_ward20"])
+
+
+def test_the_report_counts_audit_candidates_separately_from_its_figures(
+    tmp_path: Path, layers: ReferenceLayers
+) -> None:
+    rows = _pothole_year(10, 2025)
+    reasons = [RETRIEVAL_SPATIAL] * 10
+    rows.append(
+        _row(
+            sr_number="CAND1",
+            created_date="2025-03-05T09:00:00.000",
+            latitude=None,
+            longitude=None,
+            ward="20",
+        )
+    )
+    reasons.append(RETRIEVAL_SOURCE_WARD)
+    root = _release(tmp_path, layers, {2025: rows}, reasons={2025: reasons})
+
+    report = build_category_report(root, 2025, "ward20", "potholes")
+    assert report.counts.raw == 10, "an audit candidate is in no count"
+    assert report.audit_candidates == 1
+    assert report.excluded_from_analysis == {"coordinate_missing": 1}
+
+
+def test_exclusions_and_ward_disagreement_are_scoped_to_the_category(
+    tmp_path: Path, layers: ReferenceLayers
+) -> None:
+    """Counted across the partition, another category's exclusions read as pothole requests that
+    had been dropped — and the information-only calls alone outnumber the potholes."""
+    rows = _pothole_year(10, 2025)
+    # An information-only call, excluded on its own terms, in a different category entirely.
+    rows.append(
+        _row(
+            sr_number="IOC1",
+            sr_short_code="311IOC",
+            sr_type="311 INFORMATION ONLY CALL",
+            created_date="2025-03-06T09:00:00.000",
+        )
+    )
+    # A graffiti request whose source ward disagrees with where it maps.
+    rows.append(
+        _row(
+            sr_number="GRAF1",
+            sr_short_code="GRAF",
+            sr_type="Graffiti Removal Request",
+            created_date="2025-03-07T09:00:00.000",
+            ward="5",
+        )
+    )
+    root = _release(tmp_path, layers, {2025: rows})
+
+    report = build_category_report(root, 2025, "ward20", "potholes")
+    assert report.counts.raw == 10
+    assert "information_only_call" not in report.excluded_from_analysis
+    assert report.excluded_from_analysis == {}
+    assert report.source_ward_disagreement == 0, "the graffiti disagreement is not a pothole one"
+
+
+def test_information_only_calls_are_excluded_without_the_coordinate_rule(
+    tmp_path: Path, layers: ReferenceLayers
+) -> None:
+    """Two different judgements, kept apart. An information-only call is not a request for a
+    service at a place, whatever its coordinates; the default-point rule is a separate condition
+    that happens not to fire inside Ward 20, because the 311 Center is outside the ward."""
+    rows = _pothole_year(5, 2025)
+    rows.append(
+        _row(
+            sr_number="IOC1",
+            sr_short_code="311IOC",
+            sr_type="311 INFORMATION ONLY CALL",
+            created_date="2025-03-06T09:00:00.000",
+        )
+    )
+    bronze = _bronze(rows)
+    bronze["retrieval_reason"] = [RETRIEVAL_SPATIAL] * len(rows)
+    silver = enrich_service_requests(bronze, 2025, load_service_request_config(), layers).set_index(
+        "sr_number"
+    )
+
+    # Perfectly good coordinates, and still excluded — by what it is, not by where it is.
+    assert silver.loc["IOC1", "coordinate_quality"] == "ok"
+    assert not bool(silver.loc["IOC1", "analytical_inclusion"])
+    assert silver.loc["IOC1", "exclusion_reason"] == "information_only_call"
+    # And it is still in Silver, with its source values intact.
+    assert silver.loc["IOC1", "sr_type_raw"] == "311 INFORMATION ONLY CALL"

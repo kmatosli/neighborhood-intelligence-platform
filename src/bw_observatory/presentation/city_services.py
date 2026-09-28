@@ -10,8 +10,12 @@ Consequences that show up in the code:
 
 * Every count is available as **raw** (what residents submitted) and **primary** (excluding
   requests the City flagged as duplicates of another). Neither is "the" number.
-* A completion-time statistic is produced only for a category whose closure semantics have been
-  audited in `config/service_requests.yml`, and only from statuses that audit allows.
+* A **recorded-closure** duration is produced only for a category whose closure semantics have
+  been audited in `config/service_requests.yml`, and only from statuses that audit allows. The
+  word is "closure", never "completion": the portal publishes no description for `closed_date`
+  and no resolution code, so nothing in the source establishes that a closed record means the
+  physical condition was repaired. The measure is the interval between two administrative
+  timestamps, and it is named for what it is.
 * Distributions are reported as median and quartiles, because closure times are strongly skewed
   and a mean would be moved by a handful of very old requests.
 * Areas are never ranked as better or worse served. Without an exposure measure — street
@@ -29,6 +33,7 @@ import pandas as pd
 from bw_observatory.geography.models import SourceStatus
 from bw_observatory.geography.service_requests import duration_frame
 from bw_observatory.ingest.service_requests import (
+    RETRIEVAL_SOURCE_WARD,
     ServiceRequestConfig,
     load_service_request_config,
     silver_path,
@@ -95,7 +100,9 @@ def in_geography(frame: pd.DataFrame, geography: ProductGeography) -> pd.Series:
         inside &= frame["spatial_community_area"].astype("string") == str(
             geography.community_area
         ).lstrip("0")
-    return inside
+    # An unplaced record compares NA, not False. Returning that would make this mask safe only
+    # while it happens to be ANDed with something falsy first, which is not a guarantee.
+    return inside.fillna(False).astype(bool)
 
 
 def current_source_view(rows: pd.DataFrame) -> pd.DataFrame:
@@ -185,15 +192,20 @@ def open_request_ages(rows: pd.DataFrame, as_of: date) -> dict[str, float | int 
     }
 
 
-def completion_times(
+def recorded_closure_times(
     rows: pd.DataFrame, category: str, config: ServiceRequestConfig
 ) -> dict[str, object] | None:
-    """Completion-time distribution, or None when the category's semantics do not support one.
+    """Days to recorded closure, or None when the category's semantics do not support a duration.
 
     Returning None is a real answer: a duration is published only where an audit established
-    what a closure means. The numbers are days from creation to closure for the statuses the
-    audit allows, excluding duplicates, because a duplicate closes when its parent is resolved
-    and would measure the linkage rather than the work.
+    what a closure means. The numbers are days from `created_date` to `closed_date` for the
+    statuses the audit allows, excluding duplicates, because a duplicate closes when its parent
+    is resolved and would measure the linkage rather than the work.
+
+    Deliberately not called a completion or response time. Both would assert something the
+    source does not support: the portal documents neither `closed_date` nor `status`, and there
+    is no resolution code, so a closed record establishes only that the City marked the record
+    closed on that date.
     """
     eligible = duration_frame(rows, category, config)
     if eligible.empty:
@@ -208,13 +220,28 @@ def completion_times(
         "p90_days": round(float(days.quantile(0.90)), 1),
         "statuses_counted": list(rules.get("duration_eligible_statuses", [])),
         "excludes_duplicates": bool(rules.get("duration_excludes_duplicates", True)),
+        # What the two timestamps are, named explicitly so the measure cannot be re-described.
+        "measures": "days from the source created_date to the source closed_date",
         # The limitation that matters most, carried with the number rather than filed elsewhere.
         "interpretation": (
-            "Days from when the request was created to when the City closed it. The source "
-            "carries no resolution code, so a closure does not establish that the condition "
-            "was repaired — only that the request was closed."
+            "Days from when the request was created to when the City marked the 311 record "
+            "closed. The City publishes no description for this field and no resolution code, "
+            "so a recorded closure does not establish that the pothole was repaired, or when it "
+            "was repaired — only that the record was closed on that date."
         ),
     }
+
+
+def _audit_candidate_count(frame: pd.DataFrame, category: str) -> int:
+    """How many of this category's records were retrieved only by the source-ward clause.
+
+    This is the coordinate blind spot made countable. A partition written before retrieval
+    reasons existed has no such column, and reports 0 rather than guessing.
+    """
+    if "retrieval_reason" not in frame.columns:
+        return 0
+    rows = frame[frame["analytical_category"].astype("string") == category]
+    return int((rows["retrieval_reason"].astype("string") == RETRIEVAL_SOURCE_WARD).sum())
 
 
 def _as_int(value: object) -> int:
@@ -295,10 +322,14 @@ class CategoryReport:
     monthly: list[dict[str, int]]
     status: dict[str, int]
     open_ages: dict[str, float | int | None]
-    completion: dict[str, object] | None
+    recorded_closure: dict[str, object] | None
     portions: list[dict[str, object]]
     repeat_addresses: list[dict[str, object]]
     excluded_from_analysis: dict[str, int]
+    #: Records retrieved because the SOURCE labels them Ward 20 while the spatial clause could
+    #: not reach them — almost always because they carry no coordinates. The measurable size of
+    #: the coordinate blind spot. None of them is counted in any figure above.
+    audit_candidates: int
     source_ward_disagreement: int
     denominator: str | None
     methodology: list[str]
@@ -342,7 +373,13 @@ def build_category_report(
         prior_counts = counts_for(_within(prior_rows, date(prior_year, 1, 1), cutoff))
         prior_end = cutoff.isoformat()
 
-    excluded = frame.loc[~frame["analytical_inclusion"], "exclusion_reason"]
+    # Exclusions for THIS category only. Counted across the whole partition, these would report
+    # another category's excluded rows — the information-only calls alone are tens of times the
+    # pothole volume — and a reader would take them for pothole requests that were dropped.
+    # Not scoped by geography: an excluded row is usually excluded *because* it could not be
+    # placed, so filtering by geography first would hide exactly what this is meant to count.
+    in_category = frame["analytical_category"].astype("string") == category
+    excluded = frame.loc[in_category & ~frame["analytical_inclusion"], "exclusion_reason"]
     # Provisional is judged against the newest data in the RELEASE, not within this year's own
     # file: a completed year's last record is by definition its own period end, so comparing the
     # two would mark every year provisional.
@@ -370,11 +407,14 @@ def build_category_report(
         monthly=monthly_counts(current, through),
         status=status_breakdown(current),
         open_ages=open_request_ages(current, datetime.now(UTC).date()),
-        completion=completion_times(current, category, config),
+        recorded_closure=recorded_closure_times(current, category, config),
         portions=portion_distribution(frame, category) if geography.community_area is None else [],
         repeat_addresses=repeat_locations(current),
         excluded_from_analysis={str(k): int(v) for k, v in excluded.value_counts().items()},
-        source_ward_disagreement=int(frame["ward_mismatch"].sum()),
+        audit_candidates=_audit_candidate_count(frame, category),
+        # Among the requests actually counted above — not across every category in the
+        # partition, which would attribute other categories' disagreements to potholes.
+        source_ward_disagreement=int(current["ward_mismatch"].sum()),
         # Potholes would need street mileage to become a rate. The City's street centre-line
         # layer has no working API export, so no denominator is ingested and none is invented.
         denominator=None,
@@ -385,7 +425,11 @@ def build_category_report(
             "Ward 20 boundary, never by the ward recorded on the request.",
             f"{definition.description}",
             "Raw counts include every submission; primary counts exclude requests the City "
-            "flagged as duplicates of another request.",
+            "flagged as duplicates of another request. Neither is a count of potholes: one "
+            "pothole can produce one report, several independent reports, or none at all, and "
+            "the City's duplicate flag links only the records it recognised as related.",
+            "Requests are never grouped by how close together they are. Two reports on the "
+            "same block may be two real conditions, and the source does not say otherwise.",
             "No population or street-mileage denominator is available, so these are request "
             "counts and not rates. Areas are not ranked by them.",
         ],
