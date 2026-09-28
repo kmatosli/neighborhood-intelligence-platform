@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { WireShell } from "@/components/WireShell";
 import { QuestionHeader } from "@/components/QuestionHeader";
+import { PotholeServicePanel } from "@/components/PotholeServicePanel";
+import { useYear } from "@/lib/useYear";
+import { useGeography } from "@/lib/useGeography";
 import {
   ComingSoonNotice,
   PendingControl,
@@ -15,7 +18,7 @@ export const Route = createFileRoute("/trends")({
       {
         name: "description",
         content:
-          "Is reported crime in Ward 20 getting better or worse? A single trend line and category changes. Not yet connected to validated live data.",
+          "Is reported crime in Ward 20 getting better or worse? The crime trend views are not yet connected to validated live data. Pothole service requests from Chicago 311 are live.",
       },
     ],
   }),
@@ -28,8 +31,9 @@ function Trends() {
       <section className="mb-6">
         <QuestionHeader question="Is it getting better or worse?">
           <ComingSoonNotice>
-            This page is not yet connected to validated live data. The layout below shows what it
-            will contain. No trend, figure, or comparison is shown until the data supports one.
+            The crime trend views on this page are not yet connected to validated live data. Their
+            layouts show what they will contain. No trend, figure, or comparison is shown until the
+            data supports one. The City Services section further down is live.
           </ComingSoonNotice>
 
           {/* No direction is stated. Answering this question needs several enriched years, and
@@ -72,6 +76,11 @@ function Trends() {
         />
       </section>
 
+      {/* City Services — the first connected section on this page. Crime trends above are
+          still placeholders; this one is live, so it is labelled as such rather than sitting
+          among them unmarked. */}
+      <CityServicesSection />
+
       {/* Category change */}
       <section aria-labelledby="cats">
         <h2 id="cats" className="font-serif text-xl">
@@ -83,5 +92,32 @@ function Trends() {
         />
       </section>
     </WireShell>
+  );
+}
+
+/**
+ * City Services → Potholes. Reads the shared geography and year from the URL, the same context
+ * the Overview uses, so moving between pages keeps the selection.
+ */
+function CityServicesSection() {
+  const { year, isLoading: yearLoading } = useYear();
+  const { geographyId, isLoading: geoLoading } = useGeography();
+
+  return (
+    <section aria-labelledby="city-services" className="mb-10">
+      <h2 id="city-services" className="font-serif text-xl">
+        City Services — potholes
+      </h2>
+      <p className="mt-1 text-base text-muted-foreground">
+        Reported pothole service requests from the City of Chicago 311 system. These are reports
+        residents and staff submitted, not a count of how many potholes exist, and not a measure of
+        how well the City performs.
+      </p>
+      {yearLoading || geoLoading || year === null || geographyId === null ? (
+        <p className="mt-3 text-base text-muted-foreground">Loading…</p>
+      ) : (
+        <PotholeServicePanel geographyId={geographyId} year={year} />
+      )}
+    </section>
   );
 }

@@ -684,3 +684,85 @@ export function findingHref(finding: Finding): string | null {
   const anchor = finding.destination_anchor ? `#${finding.destination_anchor}` : "";
   return `${finding.destination_route}${query ? `?${query}` : ""}${anchor}`;
 }
+
+// ==========================================================================================
+// City Services — Chicago 311 service requests
+// ==========================================================================================
+
+/** Raw counts every submission; primary excludes requests flagged as duplicates of another. */
+export type ServiceCounts = {
+  raw: number;
+  primary: number;
+  duplicates: number;
+  duplicate_share: number | null;
+};
+
+export type ServiceCategoryReport = {
+  geography_id: string;
+  geography_label: string;
+  geography_area_share_pct: number | null;
+  category: string;
+  category_label: string;
+  year: number;
+  data_through: string;
+  /** Records are still arriving for the period, so counts will rise. */
+  provisional: boolean;
+  counts: ServiceCounts;
+  prior_counts: ServiceCounts | null;
+  prior_period_end: string | null;
+  subcategories: Record<string, number>;
+  monthly: { month: number; raw: number; primary: number }[];
+  status: Record<string, number>;
+  open_ages: Record<string, number | null>;
+  /** Absent when the category's closure semantics do not support a duration. */
+  completion: Record<string, unknown> | null;
+  portions: Record<string, unknown>[];
+  repeat_addresses: Record<string, unknown>[];
+  excluded_from_analysis: Record<string, number>;
+  source_ward_disagreement: number;
+  /** Null means the figures are counts, not rates — no exposure measure is ingested. */
+  denominator: string | null;
+  methodology: string[];
+};
+
+export async function fetchServiceCategory(
+  category: string,
+  geographyId: string,
+  year: number,
+  signal?: AbortSignal,
+): Promise<ServiceCategoryReport> {
+  const response = await fetch(`/api/v1/city-services/${category}/${geographyId}?year=${year}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    let detail = `City Services data could not be loaded (${response.status}).`;
+    try {
+      const body = (await response.json()) as { detail?: string };
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Not JSON. Keep the status-based message rather than inventing one.
+    }
+    throw new ApiError(detail, response.status);
+  }
+  const data = (await response.json()) as ServiceCategoryReport;
+  if (!data.counts || !Array.isArray(data.methodology)) {
+    throw new ApiError("The server returned an unexpected City Services payload.", 500);
+  }
+  return data;
+}
+
+export const MONTH_ABBREVIATIONS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];

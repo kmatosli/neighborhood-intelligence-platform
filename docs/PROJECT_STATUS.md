@@ -270,6 +270,71 @@ production disk. Version 2 proceeds in numbered work packages.
   - Only CA-01, CA-11 and CA-17 from the analytics catalogue are implemented (in V2-006).
     CA-02 … CA-19 remain pending owner review and none is approved.
 
+- **V2-005 — Chicago 311 ingestion and the City Services domain (potholes).** Implemented
+  2026-09-27 (local; not pushed, not deployed). The second dataset in the platform, and the
+  first one outside public safety. Built as a **reusable 311 architecture**, not a pothole
+  one-off: eight categories are configured and classified, and potholes are the one published
+  because they are the one whose closure semantics have been audited.
+  - **Category registry is configuration.** `config/service_requests.yml` keys every category on
+    the verified `sr_short_code` — never on the type wording, which drifts (one live type is
+    still labelled "NO LONGER BEING ACCEPTED" and keeps receiving records). Duplicate codes
+    across categories are refused at load. An unrecognised code becomes `uncategorized` and
+    keeps its raw type, so a new City category surfaces rather than inflating an existing
+    figure. `validated_categories: [potholes]` is the publication gate; asking the API for any
+    other category returns a 404 naming the reason.
+  - **Bronze** (`ingest/service_requests.py`): 25 preserved source columns plus provenance, all
+    text, deduplicated on `sr_number`, atomic publish, per-year manifest with SHA-256. Records
+    are fetched by `within_box` on the Ward 20 bounding box and a half-open year range, paged in
+    20,000-row batches ordered by `sr_number` (Socrata promises no stable order without one).
+    2024: 52,691 · 2025: 50,281 · 2026: 45,388 rows.
+  - **Silver** (`geography/service_requests.py`): placement is point-in-polygon against the same
+    boundary layers the crime pipeline used — **never** the dataset's own `ward`, which records
+    the ward at creation time (442 / 389 / 307 rows a year disagree, and the disagreement is
+    published). Source geography is preserved alongside, with mismatch flags. Coordinate quality
+    is classified (`ok` / `missing` / `zero` / `outside_chicago` / `repeated_default_point`) and
+    anything untrustworthy is excluded **with its reason**, never silently. ~96% of rows are
+    analytically included; every exclusion is an information-only call.
+  - **Reconciliation** (`ingest/service_request_reconcile.py`): the watermark refresh sees
+    inserts and edits but can never see a *withdrawal*, which has no timestamp left to fetch.
+    Reconciliation compares the local id set against the source's, marks withdrawn requests
+    `source_removed` in Silver, keeps the first observation of the removal, restores a request
+    that reappears, and reports upstream ids missing locally as a refresh gap rather than a
+    withdrawal. Nothing is ever deleted; `current_source_view` excludes withdrawn rows from
+    every published figure. Logged per run and year. **Not yet run against the live source**, so
+    no withdrawal figure is claimed.
+  - **Reproducible commands**, which did not exist before: `scripts/ingest_service_requests.py`
+    (backfill / refresh / enrich-only) and `scripts/reconcile_service_requests.py`, both thin
+    wrappers over `bw_observatory.ops.*`. The 311 data on disk had been produced ad hoc; it is
+    now rebuildable. No 311 scheduler exists anywhere.
+  - **API:** `/api/v1/city-services/years`, `/categories`, `/{category}/{geography_id}`. Every
+    report carries the metadata needed to read it — period and comparison window, exclusions and
+    their reasons, the duplicate rule, the closure interpretation, provisional flag, source-ward
+    disagreement count and the explicit absence of a denominator. Ward 20 2025: 807 submitted,
+    550 primary, 257 duplicates (31.9%), against 1,010 in the same 2024 window; completion
+    median 5 days.
+  - **UI:** `apps/web/src/components/PotholeServicePanel.tsx`, wired into Trends under
+    "City Services — potholes", reading the shared `?geo=`/`?year=` context.
+  - **Defects found and fixed while building:** the monthly series reported **0** for months a
+    provisional year had not reached, which is a fabricated value in a bar chart — unreached
+    months are now omitted and the chart says so; a completion "median" was printed over a
+    single open request; an ISO date leaked into resident-facing copy; and the shared footer
+    credited every count on the page to the crime dataset, which became wrong the moment a
+    second dataset appeared.
+  - **Known limits, stated rather than worked around:** only potholes has audited closure
+    semantics; a closure does not establish a repair (the source carries no resolution code);
+    there is no street-mileage denominator, so these are counts and never rates; and records
+    without coordinates never reach Bronze at all, because the `within_box` pre-filter cannot
+    evaluate them — documented, and never implied to be zero.
+  - **Draft findings, not published.** `C-001` (pothole request change) and `C-002` (why so much
+    reporting is duplicated) are in `config/findings.yml` with `status: draft`, so they are not
+    served; a test enforces that they stay unreviewed until the owner signs off. `G-002`, the
+    city-services data gap, had become false once 311 was ingested and was corrected to describe
+    the gap that actually remains; the correction is attributed to this change, not to the owner.
+  - Tests: 37 in `tests/test_service_requests.py`; suite **296 passing, 1 skipped**. Ruff, mypy
+    (modulo the known `py.typed` packaging notice), tsc, prettier and the frontend build clean;
+    the panel was rendered in a headless browser for Ward 20 2025, Woodlawn 2025 and the
+    provisional 2026, with a clean console and no failed requests.
+
 ## Next feature
 
 ~~**Incremental refresh using `updated_on` and `id`**~~ — done in V2-004 (2026-09-14);
