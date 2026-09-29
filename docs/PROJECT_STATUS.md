@@ -203,6 +203,73 @@ production disk. Version 2 proceeds in numbered work packages.
   size before `BW_REFRESH_SCHEDULE` (Starter + scheduler = catch-up crash loop, see the
   operating model); the Render SSH/transfer path; the one-time `BW_DATA_DIR` change.
 
+- **V2-006 — Tier 0 + Tier 0b public-information corrections.** Implemented 2026-09-22
+  (local commit; not pushed, not deployed). Requirements came from the 2026-09-22 analytical
+  design reports, which are working documents held outside the repository pending their own
+  review; the defect ids below (D1, D2, D7, D8) and feature ids (CA-01, CA-11, CA-17) are theirs.
+  - **Beat presentation (D1).** Beat rows now carry `whole_beat_current`,
+    `share_of_beat_inside` and `extends_beyond_geography`, so the clipped local count sits
+    beside the whole-beat figure a CPD beat meeting uses. Verified: 19 of 23 beats listed for
+    Ward 20 2025 are under 95% inside the ward (beat 0932 is 4 of 427 records, 0.7%).
+  - **Truncation removed (D2/D3).** All 28 crime types and all 23 beats are reachable
+    ("Show all"); a type with no reports renders an explicit zero. Previously the UI cut 26
+    types to 12 and 21 beats to 8, which made a rare type look like missing data.
+  - **Freshness surfaced (D7).** `/api/v1/freshness` existed but nothing consumed it; the page
+    now leads with a banner when the data is not current.
+  - **Frame-mixing filter (D8).** `ward`/`district`/`beat` filter CPD's published fields inside
+    a spatially selected set. A `ward=20` filter silently dropped 248 of 7,817 Ward 20 2025
+    rows; the count is now published as `excluded_by_published_field_filters` and the
+    behaviour is documented rather than silent.
+  - **Measurement intelligence (CA-17).** New `presentation/measurement.py` publishes
+    `MeasurementNotes` — definition disagreements (beat 885, ward 248, community area 683 for
+    Ward 20 2025), unplaced records, withdrawn records, and a provisional-period flag — so a
+    reader can tell a change in the neighborhood from a change in the measurement.
+  - **Provisional periods (CA-11).** A period ending within 60 days of the newest published
+    record is labelled provisional. 2026 qualifies; 2025 does not.
+  - **Enforcement-generated categories (CA-01).** `enforcement_generated_primary_types` in
+    `config/crime_categories.yml` flags offences recorded almost only where police act
+    (prostitution is 91–99% arrest-flagged against 16.1% for all crime). Flagged rows carry an
+    "enforcement-led" label, because a fall can mean less enforcement, not less behaviour.
+  - **Not a safety ranking.** A selected community-area portion states that counts alone are
+    not comparable between areas. Area shares were already in `config/geographies.yml` and the
+    API (`share_of_area_in_ward_pct`: Woodlawn 50.14, Englewood 22.95); only the UI lacked them.
+  - Tests: 8 new in `tests/test_measurement_disclosures.py`; suite 243 passing. Ruff, ruff
+    format, mypy, tsc and prettier clean; `npm run build` green; all disclosures verified in
+    headless Chrome against the live September release.
+  - Still open from the audit: `/api/v1/overview/{geo}` remains built but unused (D6); Trends,
+    Beat Meeting, Community Change and Civic Accountability remain placeholders (D9); catalogue
+    features CA-02 … CA-19 remain pending owner review.
+
+- **V2-007 — Neighborhood Intelligence Brief (findings infrastructure).** Implemented
+  2026-09-23 (local; not pushed, not deployed). The Overview now opens with the conclusions the
+  data supports, ahead of the figures that support them.
+  - **Findings are configuration, not code.** `config/findings.yml` holds each conclusion's
+    reviewed wording, limitations, classification, destination and review metadata;
+    `presentation/findings.py` holds the arithmetic. No number is typed into config and no
+    sentence is generated at request time, so a published figure can always be recomputed.
+  - **Classification is always visible:** `verified_finding`, `change_alert`,
+    `research_question`, `data_gap`. A domain with no ingested data publishes a gap that says
+    what is missing and shows no figure — People & Housing, City Services, Economic Conditions
+    (including jobs and unemployment) and Public Investment are all gaps today.
+  - **Four calculations** ship, all Public Safety: overall same-period change, the largest
+    contributing crime type, the enforcement-generated share, and the distribution across the
+    ward's community-area portions. Ward 20 2025 publishes 7,817 against 8,215 (−398, −4.8%).
+  - **Suppression is visible.** A finding whose comparison period is too small (`min_prior`), or
+    whose calculation cannot run, is listed in `withheld` with the reason rather than vanishing.
+  - **Reproducibility.** Each brief records the data release, `data_through` and generation time,
+    and every finding carries its geography, period, comparison, source dataset, freshness,
+    provisional flag and limitations. Deep links preserve `geo` and `year` and target a specific
+    anchor.
+  - `/api/v1/findings?geo=&year=`; UI in `apps/web/src/components/IntelligenceBrief.tsx`.
+  - **Defect fixed on the way:** the same-period comparison excluded the final day of the prior
+    period, because incident timestamps carry a time of day and the window compared against
+    midnight. Ward 20's 2024 comparison read 8,191 instead of 8,215, publishing −4.6% where the
+    true change is −4.8%. `_within` is now inclusive of the end day, with a regression test.
+  - Tests: 14 new in `tests/test_findings.py`; suite 258 passing. Ruff, mypy, tsc, prettier and
+    the frontend build clean; the brief was rendered in a browser against the September release.
+  - Only CA-01, CA-11 and CA-17 from the analytics catalogue are implemented (in V2-006).
+    CA-02 … CA-19 remain pending owner review and none is approved.
+
 ## Next feature
 
 ~~**Incremental refresh using `updated_on` and `id`**~~ — done in V2-004 (2026-09-14);

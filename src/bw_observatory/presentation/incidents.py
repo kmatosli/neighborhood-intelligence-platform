@@ -9,6 +9,13 @@ Only records whose coordinates fall inside the requested geography (Ward 20, or 
 an area inside Ward 20) are returned. The place filter lives in `presentation.geography`,
 never in the city's reported `ward` / `community_area` fields.
 
+The `ward`, `district` and `beat` query filters are different: they match the fields CPD
+publishes on each record, which is what a reader comparing this table with a CPD document
+needs. Those published fields disagree with the mapped location for a minority of records
+(about 3% for ward, 11% for beat on Ward 20 2025) because published coordinates are masked to
+the block. Applying one can therefore hide records that ARE inside the geography, so the number
+of rows dropped that way is counted and published on the response rather than left silent.
+
 Filtering, sorting, and pagination all happen here (server-side), so the browser never has
 to download a whole year to page or sort through it.
 """
@@ -21,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from bw_observatory.presentation.geography import ProductGeography, load_geography_registry
 from bw_observatory.presentation.models import IncidentPage, IncidentRecord
@@ -29,6 +37,7 @@ from bw_observatory.presentation.overview import (
     bronze_path,
     load_geography_rows,
     resolve_geography,
+    silver_path,
 )
 
 DEFAULT_PAGE_SIZE = 25
@@ -67,6 +76,10 @@ SORTABLE = {
     "district": "district",
     "ward": "ward",
 }
+
+# Filters that match CPD's published fields rather than the mapped location. Mixing frames is
+# legitimate (a reader may want the beat CPD printed on the record) but must never be silent.
+PUBLISHED_FIELD_FILTERS = ("ward", "district", "beat")
 
 # Columns the free-text search scans.
 _SEARCH_COLUMNS = ["block", "description", "location_description", "primary_type", "case_number"]
@@ -121,7 +134,24 @@ def load_geography_incidents(
     data_dir: Path, year: int, geography: ProductGeography
 ) -> pd.DataFrame:
     """Every incident inside one geography for a year. Raises if the year has no data."""
-    inside = load_geography_rows(data_dir, year, geography, extra_columns=("geography_status",))
+    # The spatial counterparts of the published ward/district/beat let a published-field filter
+    # report how many records it hid that the mapped location would have kept. A partition from
+    # an older enrichment may not carry them, so only the columns present are requested and the
+    # comparison simply reports nothing rather than failing the request.
+    # Only inspect the schema when the file is there: a missing year is `load_geography_rows`'s
+    # error to raise, with its own message, and must stay a 404 rather than becoming a 500 here.
+    silver = silver_path(data_dir, year)
+    optional_spatial: tuple[str, ...] = ()
+    if silver.exists():
+        present = set(pq.read_schema(silver).names)
+        optional_spatial = tuple(
+            column
+            for column in ("spatial_district_current", "spatial_beat_current")
+            if column in present
+        )
+    inside = load_geography_rows(
+        data_dir, year, geography, extra_columns=("geography_status", *optional_spatial)
+    )
 
     attributes = pd.read_parquet(bronze_path(data_dir, year), columns=BRONZE_FIELDS)
     joined = inside.merge(attributes, on="id", how="left")
@@ -130,6 +160,54 @@ def load_geography_incidents(
     # The broad, resident-facing category for each record — used by the broad_category filter.
     joined["_broad"] = joined["primary_type"].astype("string").str.upper().map(broad_category_of)
     return joined.reset_index(drop=True)
+
+
+#: Published field -> the Silver column holding the mapped equivalent. `ward` compares against
+#: the ward the geography filter already uses, so a ward filter inside a ward selection reports
+#: exactly the frame disagreement.
+_PUBLISHED_TO_SPATIAL = {
+    "ward": "spatial_ward_current",
+    "district": "spatial_district_current",
+    "beat": "spatial_beat_current",
+}
+
+
+def _digits(values: pd.Series) -> pd.Series:
+    """Ids as plain digit strings so "0312", "312" and " 312 " compare equal."""
+    return values.astype("string").str.strip().str.lstrip("0").fillna("")
+
+
+def _frame_disagreement_excluded(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    *,
+    ward: str | None,
+    district: str | None,
+    beat: str | None,
+) -> int:
+    """Records dropped by a published-field filter that the mapped location would have kept.
+
+    This is the number worth showing a reader: it is the part of the drop caused by the two
+    geographic frames disagreeing, not the part caused by the filter selecting one place.
+    """
+    requested = {"ward": ward, "district": district, "beat": beat}
+    if not any(requested.values()) or before.empty:
+        return 0
+
+    removed = before.loc[before.index.difference(after.index)]
+    if removed.empty:
+        return 0
+
+    # A removed record counts only if EVERY requested filter would have matched spatially.
+    keeps = pd.Series(True, index=removed.index)
+    for field, value in requested.items():
+        if not value:
+            continue
+        column = _PUBLISHED_TO_SPATIAL[field]
+        if column not in removed.columns:
+            return 0
+        keeps &= _digits(removed[column]) == value.strip().lstrip("0")
+    return int(keeps.sum())
 
 
 def apply_filters(
@@ -167,6 +245,11 @@ def apply_filters(
         filtered = contains("description", description)
     if location:
         filtered = contains("location_description", location)
+    # Published-field filters. These match what CPD printed on the record, while the records
+    # were selected by point-in-polygon. Removing records that do not match is the filter doing
+    # its job; what has to be surfaced is narrower — records the MAPPED location would have kept
+    # and the published field hid. Anything else would report "all other beats" as an exclusion.
+    before_published = filtered
     if ward:
         filtered = filtered[filtered["ward"].astype("string").str.strip() == ward.strip()]
     if district:
@@ -175,6 +258,9 @@ def apply_filters(
     if beat:
         beats = filtered["beat"].astype("string").str.strip().str.lstrip("0")
         filtered = filtered[beats == beat.strip().lstrip("0")]
+    filtered.attrs["published_field_excluded"] = _frame_disagreement_excluded(
+        before_published, filtered, ward=ward, district=district, beat=beat
+    )
 
     if date_from:
         filtered = filtered[filtered["_when"] >= pd.Timestamp(date_from)]
@@ -321,6 +407,9 @@ def build_incident_page(
     start = (page - 1) * page_size
     window = ordered.iloc[start : start + page_size]
 
+    applied = [
+        name for name, value in (("ward", ward), ("district", district), ("beat", beat)) if value
+    ]
     return IncidentPage(
         neighborhood_id=geography.geography_id,
         year=year,
@@ -329,6 +418,8 @@ def build_incident_page(
         page_size=page_size,
         total_pages=total_pages,
         records=[to_record(row) for _, row in window.iterrows()],
+        published_field_filters=applied,
+        excluded_by_published_field_filters=int(ordered.attrs.get("published_field_excluded", 0)),
     )
 
 

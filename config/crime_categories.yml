@@ -146,3 +146,31 @@ broad_categories:
       - NON-CRIMINAL (SUBJECT SPECIFIED)
       - RITUALISM
       - DOMESTIC VIOLENCE
+
+# ----------------------------------------------------------------------------------------
+# Enforcement-generated primary types.
+#
+# These offences are recorded almost only when police act: verified on the September 2026
+# release, PROSTITUTION reports carry an arrest flag on 91-99% of records depending on the
+# year, against 16.1% for all crime citywide in 2025. Their counts therefore move with
+# enforcement activity and CANNOT be read as a measure of how often the behaviour occurs.
+#
+# Why this matters: citywide 2006 -> 2025, gambling fell 99.0%, prostitution 97.3%,
+# narcotics 86.7% and liquor-law 82.4%, while victim-reported battery fell 47.1%. A reader
+# shown only the first group would conclude the neighbourhood changed far more than the
+# victim-reported series supports.
+#
+# Every figure derived from a type listed here must carry the enforcement-generated label.
+# See docs/methodology/CRIME.md.
+# ----------------------------------------------------------------------------------------
+
+enforcement_generated_primary_types:
+  - PROSTITUTION
+  - NARCOTICS
+  - OTHER NARCOTIC VIOLATION
+  - GAMBLING
+  - LIQUOR LAW VIOLATION
+  - WEAPONS VIOLATION
+  - CONCEALED CARRY LICENSE VIOLATION
+  - PUBLIC INDECENCY
+  - OBSCENITY

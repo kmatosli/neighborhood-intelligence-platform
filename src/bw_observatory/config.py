@@ -112,6 +112,11 @@ class Settings(BaseSettings):
         return self.config_dir / "neighborhoods" / "neighborhoods.yml"
 
     @property
+    def findings_config(self) -> Path:
+        """The Overview's published findings and data gaps (config/findings.yml)."""
+        return self.config_dir / "findings.yml"
+
+    @property
     def geographies_config(self) -> Path:
         """The product geographies: Ward 20 and the areas within it (config/geographies.yml)."""
         return self.config_dir / "geographies.yml"
