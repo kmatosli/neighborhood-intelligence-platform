@@ -12,6 +12,14 @@ Three states the product owner needs to tell apart without reading Parquet files
 The staleness threshold is deliberately not "today": the City withholds roughly the most
 recent seven days (`SOURCE_LAG_DAYS`), and a daily batch can land a day late, so data
 through eleven days ago is normal and data through twelve is not.
+
+Reconciliation is reported in three parts, because only one of them is an integrity signal.
+The refresh records the raw per-year difference `source rows − local rows`. Local rows include
+records a reconciliation has already recognized as withdrawn from the source (kept as
+`source_removed`, never deleted), so a fully reconciled year still shows a negative raw
+difference. `unexplained_reconciliation_drift = raw difference + recognized removals` is what
+is left once those are accounted for: zero after a complete reconciliation, and non-zero only
+for a genuine gap — e.g. ids the source has and the local copy lacks (`missing_locally`).
 """
 
 from __future__ import annotations
@@ -43,6 +51,11 @@ DATA_THROUGH_GRACE_DAYS = 4
 
 RECONCILIATION_LOG_FILENAME = "reconciliation_log.parquet"
 
+INTEGRITY_RECONCILED = "reconciled"
+INTEGRITY_UNEXPLAINED_DRIFT = "unexplained_drift"
+INTEGRITY_INCOMPLETE = "incomplete"  # no unexplained drift, but some year never id-reconciled
+INTEGRITY_UNKNOWN = "unknown"
+
 
 @dataclass
 class Freshness:
@@ -65,8 +78,19 @@ class Freshness:
     rows_unchanged: int | None = None
     rows_missing_geography: int | None = None
     duration_seconds: float | None = None
+    # Raw `source − local` per year, as the last successful refresh recorded it. Kept under its
+    # original name for compatibility; `source_local_difference` is the same figure, named for
+    # what it is.
     reconciliation_drift: dict[str, int] = field(default_factory=dict)
     last_reconciliation: dict[str, Any] | None = None
+    source_local_difference: dict[str, int] = field(default_factory=dict)
+    # Local rows already recognized as withdrawn by each year's latest real reconciliation.
+    recognized_source_removals: dict[str, int] = field(default_factory=dict)
+    # The integrity signal: raw difference + recognized removals, per year.
+    unexplained_reconciliation_drift: dict[str, int] = field(default_factory=dict)
+    # Years with a raw difference recorded but no real reconciliation run on record.
+    years_never_reconciled: list[str] = field(default_factory=list)
+    reconciliation_integrity: str = INTEGRITY_UNKNOWN
 
     def as_dict(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -85,6 +109,53 @@ def _parse(moment: str | None) -> datetime | None:
 def _newest_year(bronze_dir: Path) -> int | None:
     years = [int(p.stem) for p in bronze_dir.glob("*.parquet") if p.stem.isdigit()]
     return max(years) if years else None
+
+
+def _separate_known_removals(freshness: Freshness, rlog: pd.DataFrame) -> None:
+    """Split the raw difference into recognized removals and unexplained drift.
+
+    Each year's recognized removals come from that year's most recent completed real
+    reconciliation: `newly_removed + still_removed` is every local row the source no longer
+    returns and which is already marked `source_removed`. A row that reappeared was restored
+    and is in neither figure. A year with no completed reconciliation has no recognized
+    removals; its whole raw difference stays unexplained and the year is listed, rather than
+    being assumed sound.
+    """
+    raw = dict(freshness.reconciliation_drift)
+    freshness.source_local_difference = raw
+    if not raw:
+        freshness.reconciliation_integrity = INTEGRITY_UNKNOWN
+        return
+
+    latest_by_year: dict[str, int] = {}
+    if not rlog.empty:
+        done = rlog[rlog["status"] == STATUS_COMPLETE].sort_values("end_time")
+        for reconciled_year, rows in done.groupby(done["year"].astype(int)):
+            last = rows.iloc[-1]
+            latest_by_year[str(reconciled_year)] = int(last["newly_removed"]) + int(
+                last["still_removed"]
+            )
+
+    recognized: dict[str, int] = {}
+    unexplained: dict[str, int] = {}
+    never: list[str] = []
+    for year, difference in sorted(raw.items()):
+        known = latest_by_year.get(year)
+        if known is None:
+            never.append(year)
+            known = 0
+        recognized[year] = known
+        unexplained[year] = difference + known
+    freshness.recognized_source_removals = recognized
+    freshness.unexplained_reconciliation_drift = unexplained
+    freshness.years_never_reconciled = never
+    if any(value != 0 for value in unexplained.values()):
+        freshness.reconciliation_integrity = INTEGRITY_UNEXPLAINED_DRIFT
+    elif never:
+        # Counts agree, but agreeing counts can hide offsetting differences in the id sets.
+        freshness.reconciliation_integrity = INTEGRITY_INCOMPLETE
+    else:
+        freshness.reconciliation_integrity = INTEGRITY_RECONCILED
 
 
 def crime_freshness(data_dir: Path, now: datetime | None = None) -> Freshness:
@@ -146,6 +217,7 @@ def crime_freshness(data_dir: Path, now: datetime | None = None) -> Freshness:
 
     # -- last reconciliation ----------------------------------------------------------------
     reconcile_path = bronze_dir / RECONCILIATION_LOG_FILENAME
+    rlog = pd.DataFrame()
     if reconcile_path.exists():
         rlog = pd.read_parquet(reconcile_path)
         rlog = rlog[~rlog["dry_run"].astype(bool)] if not rlog.empty else rlog
@@ -162,8 +234,9 @@ def crime_freshness(data_dir: Path, now: datetime | None = None) -> Freshness:
                 "reappeared": int(latest_run["reappeared"].sum()),
                 "missing_locally": int(latest_run["missing_locally"].sum()),
             }
+    _separate_known_removals(freshness, rlog)
 
-    # -- running now? ---------------------------------------------------------------------
+    # -- running now?---------------------------------------------------------------------
     lock = RefreshLock(bronze_dir)
     owner = lock.owner()
     freshness.refresh_running = owner is not None and not lock.is_stale(owner, moment)
