@@ -350,6 +350,26 @@ production disk. Version 2 proceeds in numbered work packages.
     merged, not deployed. Local gate that day: ruff, ruff format, mypy (59 files) clean; pytest
     304 passed, 2 skipped.
 
+- **Crime Analytics Sprint 1 — Foundation + Change core (2026-10-27).** Branch
+  `feature/crime-analytics-sprint1` (local, not pushed, not deployed).
+  - `/freshness` separates the raw source/local difference, recognized source removals and
+    `unexplained_reconciliation_drift` (0 in every year on the 2026-09-15 logs; 2010 reported as
+    never id-reconciled, integrity `incomplete`).
+  - `release.json` identity (`scripts/write_release_manifest.py`, `--verify`); Gold daily counts,
+    coverage and build proof (`scripts/build_crime_gold.py`), failing unless every year
+    reconciles to Silver for Ward 20 and all nine portions and the portions sum to the ward;
+    incident-level revision events with the per-cell invariant. `build_data_release` now
+    refuses an archive without `release.json` and a matching PASSing Gold build.
+  - Change analytics (`presentation/change.py`) and `GET /api/v1/trends/{geo}/change`;
+    Trends page rebuilt as the five sections with Change live and every fake control removed.
+  - Verified on the retained releases (scratch extractions): Gold PASS for both, revisions
+    July→September 1,565 changed incidents with the invariant holding in 31,303 cells; register
+    reproduction in `reports/design/CRIME_SPRINT1_FOUNDATION_2026-10-27.md` §4.1.
+  - **Production uses none of this yet**: releases on Render carry no `release.json` or Gold, so
+    the endpoint would answer `aggregates_unavailable` until a release is cut with them.
+  - Tests: suite 350 passed, 2 skipped; ruff, format, mypy, tsc, Prettier (changed files) and the
+    production build clean; headless Chrome at 1280 and 390 px.
+
 - **Crime analytics owner decisions (2026-10-27).** Recorded in
   `reports/design/NIP_CRIME_ANALYTICS_INNOVATION_CATALOGUE.md` (Part 6 Approval column and the
   2026-10-27 decision record). Crime Trends has five sections — Change, Geography,

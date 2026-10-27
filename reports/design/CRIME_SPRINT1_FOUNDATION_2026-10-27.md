@@ -323,3 +323,34 @@ notebook for them exists (A:172).
 | R-26 | Domestic battery | 380 battery; 193 by description; 206 by flag; 50.8%; 69.4% in apartments | 2026-01-01 → 07-02 | **whole Woodlawn community area, pre-V2: not a product geography** | A:179-197, 223-224 | No | Sprint 4 | **REQUIRES RECOMPUTATION BEFORE PUBLICATION**, and the frame itself is invalid |
 
 Theft and criminal-damage investigations have **no** research figure to register (none was computed).
+
+### 4.1 Sprint 1 reproduction check (2026-10-27)
+
+Recomputed by committed code (`gold.crime_aggregates`, `presentation.change`) from scratch
+extractions of the retained archives — `bw-release-20260921` (SHA-256 matches its sidecar) and
+`bw-release-20260726` — with retroactive `release.json` written into the extractions only. Ward 20
+unless stated. **The code-derived value is authoritative; nothing was tuned to agree.**
+
+| # | Finding | Old research value | Reproducible value | Result | Explanation |
+|---|---|---|---|---|---|
+| R-01 | Total 2006 → 2025 | 17,483 → 7,817 (−55%) | 17,483 → 7,817 (−55.3%) | MATCH | |
+| R-01 | Violent share (broad partition) | 35.1% → 38.7% | 35.1% → 38.7% | MATCH | |
+| R-01 | Property share | 41.9% → 47.5% | 41.9% → 47.5% | MATCH | |
+| R-01 | Discretionary / enforcement-generated share 2006 → 2025 | 16.8% → 5.6% | 16.8% (2,935) → 5.7% (448 of 7,817 = 5.73%) | DIFFER (0.1 pp) | Rounding or a slightly different ad-hoc type list; the configured overlay list is now the definition |
+| R-02 | Enforcement-generated share 2012 → 2016 | 16.9% → 5.1% | 16.9% → 5.2% (453) | DIFFER (0.1 pp, 2016) | As above |
+| R-05 | Motor vehicle theft share 2006 / 2023 / 2025 | 4.9% / 13.2% / 8.4% | 4.9% (858) / 13.2% (1,104) / 8.4% (659) | MATCH | |
+| R-06 | MVT count 2025 | 659 | 659 | MATCH | |
+| R-03 | Net change 2025 vs 2024 | −398 (reported −4.6%) | 7,817 vs 8,215: −398, −4.8%; Σ type Δ reconciles | MATCH (net); −4.6% superseded | |
+| R-04 | Largest type changes 2025 vs 2024 | not computed | weapons violation −164, battery −130, robbery −111, MVT −68, deceptive practice +51, narcotics +44 | NEW | First reproducible decomposition |
+| R-07 | Totals 2023 → 2025 | 8,384 → 7,817 | 8,384 → 7,817 | MATCH | |
+| R-07 | Homicide 2023 → 2025 | 12 → 13 | Ward 20: 28 → 13 (`01A` 28 → 13) | DIFFER | No built geography reproduces 12 for 2023 (Woodlawn portion 10, Washington Park portion 8); the original frame/period cannot be reconstructed |
+| R-07 | Robbery 2023 → 2025 | 128 → 87 | Ward 20: 334 → 225 | DIFFER | No built geography matches; not reproducible |
+| R-07 | Selected FBI/NIBRS violent classes 2023 → 2025 | — | 1,149 (13.7%) → 946 (12.1%) | NEW | Approved overlay, first computation |
+| R-08 | Revision July → September, year 2025 | 7,813 → 7,817 | 7,813 → 7,817 (+5 entries / −1 exit); 2024: 8,216 → 8,215 | MATCH | 19 incidents touch 2024–2025: 4 added, 2 withdrawn, 1 reclassified, 1 re-placed, 11 arrest-flag changes (reasons not additive) |
+| R-09 | Source withdrawals in Ward 20 | 5 | 2024: 1 · 2025: 1 · 2026: 3 | MATCH | |
+
+Publication status after this check: R-01 (total, violent, property), R-05, R-06, R-03, R-08 and R-09
+are **reproducible by committed code** against `bw-release-20260921`; R-01/R-02 enforcement shares
+are reproducible at the code-derived values; the R-07 homicide/robbery research figures are
+**not reproducible and must not be cited** — the code-derived Ward 20 values replace them.
+Nothing from this table is typed into the application; the page computes every figure live.
