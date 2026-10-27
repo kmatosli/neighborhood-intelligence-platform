@@ -85,6 +85,7 @@ def write_root(
             {
                 "year": int(str(year)),
                 "rows": len(bronze),
+                "download_completed": "2026-02-15T00:00:00+00:00",
                 "checksum": hashlib.sha256(bronze_file.read_bytes()).hexdigest(),
                 "status": "complete",
             }

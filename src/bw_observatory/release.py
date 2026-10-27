@@ -249,6 +249,6 @@ def verify_release_manifest(data_dir: Path, config_dir: Path) -> list[str]:
         path = silver_dir / f"{year}.parquet"
         if path.exists() and sha256_file(path) != recorded:
             problems.append(f"Silver {year} checksum differs from the one recorded at the cut.")
-    if config_digests(config_dir) != manifest.config_sha256:
-        problems.append("Category/geography config differs from the one recorded at the cut.")
+    # Config differing from the cut is not a data fault (config ships with the code); Gold's own
+    # build record is what must match the live config (gold.crime_aggregates.check_gold).
     return problems

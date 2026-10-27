@@ -276,10 +276,10 @@ def build_crime_gold(data_dir: Path, config_dir: Path, commit: str = "unknown") 
             "release.json does not describe this root: its ledger digest differs from the "
             "files on disk. Re-cut the release identity before building Gold."
         )
-    if build.config_sha256 != release.config_sha256:
-        build.failures.append(
-            "Category/geography config differs from the config recorded in release.json."
-        )
+    # Config is code (it ships in Git), not release data: release.json records the config of
+    # the cut as provenance, and Gold records the config it was built with. The runtime check
+    # compares the live config with Gold's record, so a config change makes Gold stale until it
+    # is rebuilt, without rewriting the identity of an immutable release.
 
     frames: list[pd.DataFrame] = []
     for year in years:
