@@ -54,3 +54,35 @@ def test_sidecar_passes_sha256sum_check(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "release.tar.gz: OK" in result.stdout
+
+
+def test_a_new_archive_requires_release_identity_and_matching_gold(tmp_path: Path) -> None:
+    import json
+
+    check = load_script().check_release_identity
+    assert any("release.json is missing" in p for p in check(tmp_path))
+
+    (tmp_path / "release.json").write_text(
+        json.dumps({"release_id": "dev-x", "status": "development", "ledger_sha256": "a"}),
+        "utf-8",
+    )
+    problems = check(tmp_path)
+    assert any("only a 'release' root" in p for p in problems)
+    assert any("_build.json is missing" in p for p in problems)
+
+    (tmp_path / "release.json").write_text(
+        json.dumps(
+            {"release_id": "bw-release-20261028", "status": "release", "ledger_sha256": "a"}
+        ),
+        "utf-8",
+    )
+    gold = tmp_path / "gold" / "crime"
+    gold.mkdir(parents=True)
+    build = {"status": "PASS", "release_id": "bw-release-20261028", "input_ledger_sha256": "a"}
+    (gold / "_build.json").write_text(json.dumps(build), "utf-8")
+    assert check(tmp_path) == []
+
+    (gold / "_build.json").write_text(
+        json.dumps({**build, "release_id": "bw-release-20260921"}), "utf-8"
+    )
+    assert any("Gold was built for" in p for p in check(tmp_path))

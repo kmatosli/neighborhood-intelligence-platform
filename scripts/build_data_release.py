@@ -131,6 +131,48 @@ def check_years(root: Path) -> list[str]:
     return problems
 
 
+def check_release_identity(root: Path) -> list[str]:
+    """A new archive must describe itself (`release.json`) and carry Gold built for it.
+
+    Applied when cutting an archive, not to `--verify-only`, which must keep working on the
+    archives cut before `release.json` existed (2026-07-26, 2026-09-21).
+    """
+    import json  # local: the rest of the script needs no JSON
+
+    release_file = root / "release.json"
+    build_file = root / "gold" / "crime" / "_build.json"
+    if not release_file.exists():
+        return [
+            "release.json is missing; run scripts/write_release_manifest.py on the root before "
+            "cutting an archive (an archived release must be self-describing)."
+        ]
+    try:
+        release = json.loads(release_file.read_text("utf-8"))
+    except ValueError as exc:
+        return [f"release.json is unreadable: {exc}"]
+    problems: list[str] = []
+    if release.get("status") != "release":
+        problems.append(
+            f"release.json status is {release.get('status')!r}; only a 'release' root is archived."
+        )
+    if not build_file.exists():
+        problems.append("gold/crime/_build.json is missing; run scripts/build_crime_gold.py first.")
+        return problems
+    try:
+        build = json.loads(build_file.read_text("utf-8"))
+    except ValueError as exc:
+        return [*problems, f"gold/crime/_build.json is unreadable: {exc}"]
+    if build.get("status") != "PASS":
+        problems.append("The Gold build did not pass its Silver reconciliation.")
+    if build.get("release_id") != release.get("release_id"):
+        problems.append(
+            f"Gold was built for {build.get('release_id')!r}, not {release.get('release_id')!r}."
+        )
+    if build.get("input_ledger_sha256") != release.get("ledger_sha256"):
+        problems.append("Gold was built from different inputs than release.json describes.")
+    return problems
+
+
 def refuse_unsafe_target(target: Path) -> None:
     """Never let staging or extraction be, contain, or sit inside the source data tree."""
     source = SOURCE_DIR.resolve()
@@ -381,6 +423,11 @@ def main() -> int:
     log(f"Silver years           : {min(REQUIRED_YEARS)}-{max(REQUIRED_YEARS)} complete")
 
     if not args.verify_only:
+        identity_problems = check_release_identity(SOURCE_DIR)
+        if identity_problems:
+            fail(report, identity_problems)
+        log("Release identity       : PASS (release.json + Gold build for the same release)")
+
         # Phase: disk space. Need staging + archive + extraction + overhead.
         needed = source_bytes * 2 + source_bytes // 2 + 300 * 1024 * 1024
         available = min(free_bytes(WORK_ROOT), free_bytes(archive_path))
