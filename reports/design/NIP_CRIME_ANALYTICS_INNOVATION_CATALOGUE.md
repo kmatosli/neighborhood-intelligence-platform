@@ -17,10 +17,18 @@
 > quoted throughout were verified against the September release on 2026-09-22 and are not
 > re-verified here.
 
-Every feature below is marked **PENDING OWNER REVIEW**. Nothing is approved. Approve, reject, or
-defer each line individually.
+> **Owner decisions recorded 2026-10-27.** The owner has decided the items listed under
+> [OWNER DECISION RECORD — 2026-10-27](#owner-decision-record--2026-10-27) at the end of this
+> document, and the **Approval** column of Part 6 now carries them. Items the owner has not
+> reviewed stay **PENDING OWNER REVIEW**. A recorded decision is an approval of *scope*, not of
+> any number: every figure in this catalogue was computed ad hoc on 2026-09-22 and must be
+> recomputed by committed code before publication (see
+> `reports/design/CRIME_SPRINT1_FOUNDATION_2026-10-27.md`, reproducibility register).
 
-**Baseline re-verified this session:** Render `e00665c` · `BW_DATA_DIR=/var/data/current` ·
+As written on 2026-09-22, every feature below was marked **PENDING OWNER REVIEW**, to be approved,
+rejected, or deferred line by line. The current status of each line is in the Approval column.
+
+**Baseline re-verified this session (2026-09-22; not re-verified since):** Render `e00665c` · `BW_DATA_DIR=/var/data/current` ·
 `current` → `bw-release-20260921` · scheduler **OFF** · `data_through 2026-09-06`.
 
 **Companions** (established findings are cited, not repeated): **[A]** `V2_ANALYTICAL_REDESIGN_2026-09-22.md` ·
@@ -128,23 +136,23 @@ Complexity: **S** small (days) · **M** medium (1–2 wks) · **L** large (3 wks
 
 | ID | Feature | Analytical question | Proposed visualization | Data | Readiness | Overlaps existing | Dependencies | Cx | **Approval** |
 |---|---|---|---|---|---|---|---|---|---|
-| **CA-01** | Rare & Unexpected Counts | Is a surprisingly low count real, filtered, or an artifact? | Investigation panel (Part 1) | production | **R1** | none | enforcement flag | M | **PENDING OWNER REVIEW** |
-| **CA-02** | Crime-Category Movement | Which categories move which way, and is coding implicated? | Decomposition table + composition ribbon | production | **R1** | `category_drivers` exists, UI truncates | untruncate (Tier 0) | M | **PENDING OWNER REVIEW** |
-| **CA-03** | Near-Repeat Crime | Do burglaries cluster nearby soon after one? | Knox space-time grid vs permutation null | production, **degraded** | **R4** | none | accept block-level floor | L | **PENDING OWNER REVIEW** |
+| **CA-01** | Rare & Unexpected Counts | Is a surprisingly low count real, filtered, or an artifact? | Investigation panel (Part 1) | production | **R1** | none | enforcement flag | M | **PARTIALLY APPROVED** — enforcement-generated flag built (Tier 0b, `a8be4a5`); investigation panel PENDING OWNER REVIEW |
+| **CA-02** | Crime-Category Movement | Which categories move which way, and is coding implicated? | Decomposition table + composition ribbon | production | **R1** | `category_drivers` exists, UI truncates | untruncate (Tier 0) | M | **APPROVED** (owner, 2026-10-27) as Crime Sprint 1 (Change) scope: decomposition of every type with Σ reconciliation, long-run composition, comparison windows |
+| **CA-03** | Near-Repeat Crime | Do burglaries cluster nearby soon after one? | Knox space-time grid vs permutation null | production, **degraded** | **R4** | none | accept block-level floor | L | **RESEARCH NOTE ONLY** (owner, 2026-10-27) — published CPD coordinates are block-masked, so true near-repeat distances are not measurable |
 | **CA-04** | Migration & Displacement | Did a local decline coincide with an adjacent rise? | Adjacency flow map + paired series | production | **R1** for description; **R4** for attribution | none | beat adjacency graph | L | **PENDING OWNER REVIEW** |
 | **CA-05** | Persistent/Emerging/Shifting Hotspots | Is this concentration longstanding or new? | k-of-N persistence classes on block/beat grid | production | **R1** | "repeat block" issue card only | suppression rules | M | **PENDING OWNER REVIEW** |
 | **CA-06** | Repeat Locations | Do incidents recur at the same place/premises type? | Ranked masked-block table + premises cross-tab | production | **R1** | partial (one issue card) | suppression rules | S | **PENDING OWNER REVIEW** |
-| **CA-07** | Event-Associated Crime | Do incidents shift around events/holidays/weather? | Event-window vs matched-control comparison | **needs event calendars, weather** | **R3/R4** | none | ingestion + pre-registration | L | **PENDING OWNER REVIEW** |
+| **CA-07** | Event-Associated Crime | Do incidents shift around events/holidays/weather? | Event-window vs matched-control comparison | **needs event calendars, weather** | **R3/R4** | none | ingestion + pre-registration | L | **DEFERRED** (owner, 2026-10-27) |
 | **CA-08** | Crime & Built Environment | Do incidents co-locate with vacancy, lighting, violations? | Bivariate map + co-location table | **needs 311, vacancy, violations, parcels** | **R3** | none | Tier 5 ingestion | L | **PENDING OWNER REVIEW** |
-| **CA-09** | Severity & Composition | Does a stable total conceal a shift in serious offences? | Composition ribbon + counts always visible | production | **R1** (no weights) / **R4** (harm index) | none | **separate approval for any weight set** | M | **PENDING OWNER REVIEW** |
+| **CA-09** | Severity & Composition | Does a stable total conceal a shift in serious offences? | Composition ribbon + counts always visible | production | **R1** (no weights) / **R4** (harm index) | none | **separate approval for any weight set** | M | **PARTIALLY APPROVED** (owner, 2026-10-27) — unweighted composition APPROVED, including the overlay "Selected FBI/NIBRS violent-offense classes" (`fbi_code` 01A, 02, 03, 04A, 04B); harm-weighted public crime index **REJECTED / do not implement** |
 | **CA-10** | Incident-to-Arrest | What does the arrest flag show by category, place, time? | Paired bars (flagged / not) + share line | production | **R1** | ward-wide summary only | disclosure copy | M | **PENDING OWNER REVIEW** |
-| **CA-11** | Reporting Lag & Revision | Does a recent decline shrink as records arrive? | Snapshot-vs-snapshot lag curve + provisional badge | production + **retained releases** | **R1** | none | none | S | **PENDING OWNER REVIEW** |
-| **CA-12** | Trend & Anomaly Detection | Is this outside normal variation? | SPC chart + tau-b label + Poisson band | production | **R1** | none | thresholds | M | **PENDING OWNER REVIEW** |
+| **CA-11** | Reporting Lag & Revision | Does a recent decline shrink as records arrive? | Snapshot-vs-snapshot lag curve + provisional badge | production + **retained releases** | **R1** | none | none | S | **APPROVED** (owner, 2026-10-27) — provisional badge built (Tier 0b, `a8be4a5`); incident-id revision events between retained releases are Sprint 1 scope |
+| **CA-12** | Trend & Anomaly Detection | Is this outside normal variation? | SPC chart + tau-b label + Poisson band | production | **R1** | none | thresholds | M | **PARTIALLY APPROVED** (owner, 2026-10-27) — Kendall tau-b direction on complete annual totals is Sprint 1 scope; SPC / control limits and CUSUM / change-point detection are **DEFERRED** pending a separate methodological review |
 | **CA-13** | Incident Circumstances Explorer | Under what circumstances does this occur? | Setting × hour heatmap + facets, cells <5 suppressed | production | **R1** | none | suppression rules | M | **PENDING OWNER REVIEW** |
-| **CA-14** | Documented Response & Outcome | What was done, and what followed? | SARA card + ITS with comparison area | **needs response records** | **R3** | none | response register | L | **PENDING OWNER REVIEW** |
-| **CA-15** | Geographic Definition Audit | Which geography is this, and what changes if I switch? | Side-by-side definition matrix + frame toggle | production | **R2** | **corrects D1/D8** | Tier 0 | M | **PENDING OWNER REVIEW** |
-| **CA-16** | Risk-Terrain **Diagnostic** *(discovered)* | Which environmental features co-locate with incidents? | Feature co-location table + risk surface | **needs built-environment data** | **R4** | none | CA-08 first | L | **PENDING OWNER REVIEW** |
-| **CA-17** | Measurement-Intelligence Panel *(discovered)* | Is this pattern a property of the dataset? | Data-integrity strip on every view | production | **R1** | none | none | S | **PENDING OWNER REVIEW** |
+| **CA-14** | Documented Response & Outcome | What was done, and what followed? | SARA card + ITS with comparison area | **needs response records** | **R3** | none | response register | L | **MOVED TO CIVIC ACCOUNTABILITY** (owner, 2026-10-27) — not a Crime Trends feature |
+| **CA-15** | Geographic Definition Audit | Which geography is this, and what changes if I switch? | Side-by-side definition matrix + frame toggle | production | **R2** | **corrects D1/D8** | Tier 0 | M | **PARTIALLY APPROVED** — Tier 0 disclosures built (whole-beat context, mismatch counts, D8 filter disclosure, `a8be4a5`); definition matrix + frame toggle PENDING OWNER REVIEW |
+| **CA-16** | Risk-Terrain **Diagnostic** *(discovered)* | Which environmental features co-locate with incidents? | Feature co-location table + risk surface | **needs built-environment data** | **R4** | none | CA-08 first | L | **RESEARCH NOTE ONLY** (owner, 2026-10-27) — research-stage; revisit only after built-environment data is validated |
+| **CA-17** | Measurement-Intelligence Panel *(discovered)* | Is this pattern a property of the dataset? | Data-integrity strip on every view | production | **R1** | none | none | S | **APPROVED** (owner, 2026-10-27) — implemented on `main` (`a8be4a5`, `presentation/measurement.py`); **not yet deployed** |
 | **CA-18** | Concentration & Inequality *(discovered)* | How concentrated is crime, and is that changing? | Lorenz curve + Gini trend | production | **R1** | none | state spatial unit | S | **PENDING OWNER REVIEW** |
 | **CA-19** | Neighborhood Comparison *(discovered)* | How do two areas compare, and does the ordering hold? | Paired table + frame/measure toggles | production (area denominators) | **R1** | none | frame toggle | M | **PENDING OWNER REVIEW** |
 
@@ -417,7 +425,7 @@ about policing, not about their block.
 
 ---
 
-# PART 7 — Proposed Crime Trends structure (for later approval)
+# PART 7 — Crime Trends structure (proposed 2026-09-22; **confirmed by the owner 2026-10-27**)
 
 Five sections, not one per method. Rationale: each maps to a question a user actually asks, and
 every feature above lands in exactly one, so no chart is duplicated.
@@ -453,6 +461,40 @@ proposed beyond adding sections inside the existing Trends page.
 4. **Confirm the Part 7 five-section structure** before any Trends work begins.
 5. Note **CA-14 lives in Civic Accountability**, not Crime Trends — confirm that placement.
 
+*Items 3, 4 and 5 were decided on 2026-10-27; see the record below. Item 1 remains open for every
+line still marked PENDING OWNER REVIEW.*
+
+---
+
+# OWNER DECISION RECORD — 2026-10-27
+
+Items 1–10 are from the owner's "Outstanding Issues Resolution Gate" instruction of 2026-10-27;
+items 11–17 from the "Crime Analytics Sprint 1" instruction of the same day. These decisions
+supersede the "PENDING" wording above for the items named; nothing else changed status.
+
+| # | Decision | Applies to |
+|---|---|---|
+| 1 | Crime Trends uses five sections — **Change · Geography · Circumstances · Investigations · Definitions & Methods** (Part 7 structure confirmed) | Trends page |
+| 2 | **RESEARCH NOTE ONLY** — published CPD coordinates are block-masked, so true near-repeat distances are not measurable | CA-03 |
+| 3 | **DEFER** | CA-07 |
+| 4 | Unweighted composition **APPROVED**; a harm-weighted public crime index is **REJECTED — do not implement** | CA-09 |
+| 5 | **MOVED TO CIVIC ACCOUNTABILITY**, not Crime Trends | CA-14 |
+| 6 | Research-stage only; revisit after built-environment data is validated | CA-16 |
+| 7 | **APPROVED**; already implemented on `main`, not yet deployed | CA-17 |
+| 8 | **Gold** is the layer for release-aware precomputed crime aggregates | Sprint 1 foundation |
+| 9 | `broad_categories` remain the mutually exclusive partition; enforcement-generated, narcotics, motor-vehicle theft and the serious-offense subset are **overlays**, always labelled as such and never visually stacked as if they sum to 100% | CA-02, CA-09 |
+| 10 | Small-count % suppression uses the existing findings `min_prior` rule unless testing demonstrates a concrete problem | all Trends tables |
+| 11 | `release.json` is the explicit release identity contract; a directory name alone is not an identity | releases, Gold |
+| 12 | Overlay **"Selected FBI/NIBRS violent-offense classes"** — unweighted subset, not a severity score, harm score or safety ranking. Membership by source `fbi_code` only: `01A`, `02`, `03`, `04A`, `04B`. `01B`, `08A`, `08B` excluded even where the description says "aggravated". Officer / protected-employee victims included where the source codes them 04A/04B, with an enforcement-contact caveat. Sensitive-victim classes count toward the total and are never broken out. Attempts stay where the source codes them | CA-09 |
+| 13 | **Public releases are immutable.** No design may refresh `/var/data/current` in place; automated publication is copy-on-write (active → candidate → refresh → reconcile → rebuild derived → verify → atomic switch). A failed candidate never becomes public. Scheduler implementation is not Sprint 1; `BW_REFRESH_SCHEDULE` stays off | releases, scheduler |
+| 14 | Runtime Gold integrity is cheap: release id, manifest digest, Gold input-manifest digest, build status. Full checksums only at build, release verification and deployment acceptance. On disagreement → `aggregates_stale`, no figures | Gold |
+| 15 | Revision tracking is incident-id based (`gold/crime/revisions/<prior>__<current>/events.parquet`, one row per changed id); summaries derive from it; per cell `current − prior = entries − exits` | CA-11 |
+| 16 | `/freshness` separates raw source/local difference, recognized source removals and **unexplained reconciliation drift** (the integrity signal) | operations |
+| 17 | Crime Sprint 1 — Foundation + Change core — approved for implementation. CA-12 SPC and CUSUM are excluded from it | Sprint 1 |
+
+Still **PENDING OWNER REVIEW**: CA-04, CA-05, CA-06, CA-08, CA-10, CA-13, CA-18, CA-19, the
+CA-01 investigation panel, the CA-15 definition matrix, and CA-12 SPC / change points.
+
 ---
 
 ## Sources (new in this catalogue)
@@ -467,5 +509,6 @@ Weisburd concentration, Healthy Chicago Survey, CAASE) are listed in [A], [B] an
 
 ---
 
-*Read-only. No code, configuration, dependency, data, pointer, scheduler, deployment, or
-repository state was changed. Nothing is approved.*
+*Read-only as written on 2026-09-22. No code, configuration, dependency, data, pointer,
+scheduler, deployment, or repository state was changed. Approvals are recorded only in the
+Approval column and the 2026-10-27 decision record.*

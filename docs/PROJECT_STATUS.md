@@ -205,8 +205,8 @@ production disk. Version 2 proceeds in numbered work packages.
 
 - **V2-006 — Tier 0 + Tier 0b public-information corrections.** Implemented 2026-09-22
   (local commit; not pushed, not deployed). Requirements came from the 2026-09-22 analytical
-  design reports, which are working documents held outside the repository pending their own
-  review; the defect ids below (D1, D2, D7, D8) and feature ids (CA-01, CA-11, CA-17) are theirs.
+  design reports (held outside the repository at the time; committed under `reports/design/` in
+  `f4b3539`); the defect ids below (D1, D2, D7, D8) and feature ids (CA-01, CA-11, CA-17) are theirs.
   - **Beat presentation (D1).** Beat rows now carry `whole_beat_current`,
     `share_of_beat_inside` and `extends_beyond_geography`, so the clipped local count sits
     beside the whole-beat figure a CPD beat meeting uses. Verified: 19 of 23 beats listed for
@@ -268,7 +268,8 @@ production disk. Version 2 proceeds in numbered work packages.
   - Tests: 14 new in `tests/test_findings.py`; suite 258 passing. Ruff, mypy, tsc, prettier and
     the frontend build clean; the brief was rendered in a browser against the September release.
   - Only CA-01, CA-11 and CA-17 from the analytics catalogue are implemented (in V2-006).
-    CA-02 … CA-19 remain pending owner review and none is approved.
+    CA-02 … CA-19 remain pending owner review and none is approved. *(Superseded 2026-10-27 —
+    see "Crime analytics owner decisions" below.)*
 
 - **V2-005 — Chicago 311 ingestion and the City Services domain (potholes).** Implemented
   2026-09-27 (local; not pushed, not deployed). The second dataset in the platform, and the
@@ -345,6 +346,34 @@ production disk. Version 2 proceeds in numbered work packages.
     `tests/test_service_requests.py`; suite 302 passing, 2 skipped, 2 failing only because
     Application Control blocks pyogrio in `test_geography.py` fixtures; mypy blocked by the same
     policy on this machine.
+  - **Published for review 2026-10-27** as PR #4 (`feature/city-services-311`, 4 commits); not
+    merged, not deployed. Local gate that day: ruff, ruff format, mypy (59 files) clean; pytest
+    304 passed, 2 skipped.
+
+- **Crime analytics owner decisions (2026-10-27).** Recorded in
+  `reports/design/NIP_CRIME_ANALYTICS_INNOVATION_CATALOGUE.md` (Part 6 Approval column and the
+  2026-10-27 decision record). Crime Trends has five sections — Change, Geography,
+  Circumstances, Investigations, Definitions & Methods. CA-03 and CA-16 are research notes only;
+  CA-07 is deferred; CA-09 unweighted composition is approved and a harm-weighted index is
+  rejected; CA-14 moves to Civic Accountability; CA-17 is approved (on `main`, not deployed).
+  Gold is approved for release-aware crime aggregates; `broad_categories` stay the partition and
+  overlays are never stacked to 100%; small-count suppression reuses `min_prior`. Later the same
+  day the owner approved: `release.json` as the release identity contract; the overlay "Selected
+  FBI/NIBRS violent-offense classes" (`fbi_code` 01A, 02, 03, 04A, 04B; not a severity score);
+  **immutable public releases with copy-on-write publication** (the in-place scheduler design is
+  rejected; `BW_REFRESH_SCHEDULE` stays off); cheap runtime Gold identity checks
+  (`aggregates_stale` on mismatch); incident-id revision events; `/freshness` reporting
+  unexplained reconciliation drift separately from recognized removals; and **Crime Sprint 1
+  (Foundation + Change core)** for implementation, with CA-12 SPC and change points deferred.
+  CA-04/05/06/08/10/13/18/19, the CA-01 panel and the CA-15 matrix remain pending owner review.
+  The Sprint 1 foundation — Gold contract, serious-offense proposal, Trends shell plan and the
+  reproducibility register of research figures that must be recomputed before publication — is
+  in `reports/design/CRIME_SPRINT1_FOUNDATION_2026-10-27.md`; the production catch-up plan
+  (PR #3 deploy, crime refresh and reconciliation, scheduler acceptance) is in
+  `docs/PRODUCTION_CATCHUP_PLAN_2026-10-27.md`.
+  - **Production is behind `main`.** As of 2026-10-27 Render and Vercel both serve pre-PR #3
+    code (`/api/v1/findings` 404; no `measurement` block in `/pulse`); crime data is through
+    2026-09-06, last refreshed 2026-09-15, and the scheduler is off.
 
 ## Next feature
 
