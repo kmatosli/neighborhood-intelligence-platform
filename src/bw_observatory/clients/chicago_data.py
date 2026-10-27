@@ -48,6 +48,78 @@ class ChicagoDataClient:
             raise ChicagoDataError("Metadata response was not an object.")
         return payload
 
+    # -- dataset-agnostic access -----------------------------------------------------------
+    #
+    # The crime methods below predate these and stay as they are. Everything new goes through
+    # these three, so a second dataset (311, and whatever follows) needs no new HTTP code,
+    # no second retry policy, and no second place to add the app token.
+
+    def dataset_url(self, dataset_id: str) -> str:
+        return f"https://{self.settings.chicago_data_domain}/resource/{dataset_id}.json"
+
+    def dataset_metadata(self, dataset_id: str) -> dict[str, Any]:
+        """The portal's description of a dataset: columns, types, and when rows last changed."""
+        url = f"https://{self.settings.chicago_data_domain}/api/views/{dataset_id}.json"
+        try:
+            payload = self._request_json(url)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ChicagoDataError(f"Metadata request failed for {dataset_id}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ChicagoDataError(f"Metadata for {dataset_id} was not an object.")
+        return payload
+
+    def get_records(
+        self,
+        dataset_id: str,
+        *,
+        limit: int = 20_000,
+        offset: int = 0,
+        where: str | None = None,
+        order: str | None = None,
+        select: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """One page of records from any portal dataset.
+
+        `order` matters more than it looks: Socrata does not promise a stable order across
+        pages without one, so paging without it can repeat or skip rows. Callers that page
+        must order by something unique.
+        """
+        if limit < 1 or limit > 50_000:
+            raise ValueError("limit must be between 1 and 50,000")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+
+        params: dict[str, str | int] = {"$limit": limit}
+        if offset:
+            params["$offset"] = offset
+        if where:
+            params["$where"] = where
+        if order:
+            params["$order"] = order
+        if select:
+            params["$select"] = select
+
+        try:
+            payload = self._request_json(self.dataset_url(dataset_id), params)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ChicagoDataError(f"Request failed for {dataset_id}: {exc}") from exc
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            raise ChicagoDataError(f"{dataset_id} response was not a list of records.")
+        return payload
+
+    def count_records(self, dataset_id: str, where: str | None = None) -> int:
+        """How many records the source holds for a filter. One aggregate request."""
+        params: dict[str, str | int] = {"$select": "count(*) AS n"}
+        if where:
+            params["$where"] = where
+        try:
+            payload = self._request_json(self.dataset_url(dataset_id), params)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ChicagoDataError(f"Count failed for {dataset_id}: {exc}") from exc
+        if not isinstance(payload, list) or not payload:
+            raise ChicagoDataError(f"Count for {dataset_id} returned no rows.")
+        return int(payload[0].get("n", 0))
+
     def get_crimes(
         self,
         *,

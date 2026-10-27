@@ -1,0 +1,238 @@
+# City Services — Chicago 311 Service Requests (v6vf-nfxy).
+#
+# The single source of truth for how 311 records are classified, which ones count as service
+# demand, and what a closure means. Every one of these is a methodological claim, so it lives
+# here and is published, never buried in application code.
+#
+# Source: https://data.cityofchicago.org/Service-Requests/311-Service-Requests/v6vf-nfxy
+#
+# AUDITED against the live source on 2026-09-27: 14,729,538 rows, created_date
+# 2018-07-01 → 2026-09-27, 110 distinct `sr_type`, 45 columns.
+
+dataset:
+  id: v6vf-nfxy
+  name: 311 Service Requests
+  # The consolidated system launched 2018-12-18. Rows before it are migrated legacy records
+  # (`legacy_record = true`, 31,443 of them) carrying a different schema and taxonomy, and 2018
+  # holds only 36,568 rows against ~1.8M in a full year. A continuous series across the
+  # migration would compare two different systems, so analysis starts at 2019.
+  analysis_start_year: 2019
+  earliest_source_date: "2018-07-01"
+  # The watermark column for incremental refresh: set on insert and on every later edit.
+  watermark_column: last_modified_date
+  # The stable per-record identifier.
+  id_column: sr_number
+
+# ----------------------------------------------------------------------------------------
+# Analytical categories. `sr_short_code` is the stable key — `sr_type` wording drifts (one
+# live example: "Tree Trim Request (NO LONGER BEING ACCEPTED)" still receives records).
+#
+# A record whose code is not listed here keeps its raw type and falls into `uncategorized`.
+# It is never dropped and never silently folded into another category.
+# ----------------------------------------------------------------------------------------
+
+categories:
+  potholes:
+    label: Potholes
+    description: >-
+      Reported potholes in streets and alleys. Street and alley requests are counted
+      separately as well as together, because they concern different assets and would need
+      different exposure measures to compare fairly.
+    short_codes:
+      - PHF   # Pothole in Street Complaint (426,739 records citywide)
+      - PHB   # Alley Pothole Complaint (80,830)
+    subcategories:
+      street:
+        label: Street potholes
+        short_codes: [PHF]
+      alley:
+        label: Alley potholes
+        short_codes: [PHB]
+
+  street_lights:
+    label: Street lights
+    description: Reported street-light outages.
+    short_codes:
+      - SFD   # Street Light Out Complaint (400,062)
+    status: not_yet_validated
+
+  traffic_signals:
+    label: Traffic signals
+    description: Reported traffic-signal outages.
+    short_codes:
+      - SFB   # Traffic Signal Out Complaint (188,250)
+    status: not_yet_validated
+
+  sanitation:
+    label: Sanitation
+    description: Garbage cart maintenance and weed removal.
+    short_codes:
+      - SIE   # Garbage Cart Maintenance (391,257)
+      - SCP   # Weed Removal Request (198,812)
+    status: not_yet_validated
+
+  graffiti:
+    label: Graffiti
+    description: Graffiti removal requests.
+    short_codes:
+      - GRAF  # Graffiti Removal Request (718,448)
+    status: not_yet_validated
+
+  rodents:
+    label: Rodents
+    description: Rodent baiting and rat complaints.
+    short_codes:
+      - SGA   # Rodent Baiting/Rat Complaint (384,061)
+    status: not_yet_validated
+
+  abandoned_vehicles:
+    label: Abandoned vehicles
+    description: Abandoned vehicle complaints.
+    short_codes:
+      - SKA   # Abandoned Vehicle Complaint (334,221)
+    status: not_yet_validated
+
+  trees:
+    label: Trees
+    description: >-
+      Tree debris, emergencies and trimming. The trimming type is labelled "NO LONGER BEING
+      ACCEPTED" yet still receives records, which is why codes rather than wording are the key.
+    short_codes:
+      - SEL   # Tree Debris Clean-Up Request (225,562)
+      - SEC   # Tree Emergency (177,721)
+      - SEF   # Tree Trim Request (NO LONGER BEING ACCEPTED) (300,844)
+    status: not_yet_validated
+
+# Only categories marked `validated` may be published. The others are ingested and queryable
+# but have not had their closure semantics audited, so no duration statistic is offered for
+# them yet. Potholes is the audited case.
+validated_categories:
+  - potholes
+
+# ----------------------------------------------------------------------------------------
+# Retrieval universe, measured against the live source 2026-09-28.
+#
+# Bronze is built from TWO clauses, and `retrieval_reason` records which one produced each row:
+#   spatial_bounding_box        — the published point falls inside the Ward 20 bounding box.
+#   source_ward_audit_candidate — the SOURCE labels the record ward 20 but the spatial clause
+#                                 could not reach it, almost always because it has no point.
+#
+# The second clause exists because `within_box` cannot evaluate a record with no location and
+# drops it silently, which would have left the coordinate exclusion unmeasurable from our own
+# data. Source ward is a retrieval hint here and nowhere else: analytical membership is always
+# point-in-polygon, so an audit candidate without trustworthy coordinates is excluded with its
+# reason and counted in no figure.
+#
+# Measured size of the gap the second clause closes (counts from the portal):
+#   source ward 20, no coordinates        2024: 0     2025: 0     2026: 3
+#   source ward 20, coords outside box    2024: 1     2025: 0     2026: 0
+#   POTHOLES in either case               2024: 0     2025: 0     2026: 0
+# Citywide coordinate-less records are 1,062 / 1,135 / 1,584 a year out of ~1.9M (≈0.06–0.10%),
+# and 0 coordinate-less pothole records citywide carry ANY ward value, so no ward clause could
+# ever retrieve one. The residual blind spot — a coordinate-less record whose true location is
+# Ward 20 and whose source ward is null — is not retrievable by any clause and not attributable
+# to any ward even if it were. 1,055 of the 1,108 such records in 2025 carry no source geography
+# at all (no ward, ZIP, community area or address), so nothing else could stand in for a point.
+# ----------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------
+# Analytical exclusions. Excluded records STAY in Bronze and keep their original type; Silver
+# carries a flag and a reason, so every exclusion is countable and reversible.
+#
+# SERVICE-DEMAND exclusion and COORDINATE-QUALITY exclusion are different judgements and are
+# kept separate. An information-only call is excluded because it is not a request for service at
+# a place — on its own terms, regardless of where it geocoded. Its default coordinate is a
+# separate, independently detected condition. Neither rule depends on the other.
+# ----------------------------------------------------------------------------------------
+
+exclusions:
+  - reason: information_only_call
+    description: >-
+      "311 INFORMATION ONLY CALL" is a record of someone asking a question, not a request for
+      a service at a place. It is 5,173,430 of 14,729,538 rows — 35% of the whole dataset —
+      and it is geocoded to a single default point (41.871831, -87.679846 carries 2,029,501
+      records alone). Placing those points in a ward would invent an enormous false
+      concentration, so they are excluded from every geographic and service-demand figure.
+    match:
+      sr_short_code: "311IOC"
+      sr_type: "311 INFORMATION ONLY CALL"
+
+  - reason: legacy_record
+    description: >-
+      Migrated from the pre-2019 system with a different schema and taxonomy. Retained as
+      provenance; excluded from analysis so one series never spans two systems.
+    match:
+      legacy_record: true
+
+# ----------------------------------------------------------------------------------------
+# Closure semantics, audited per category. No duration is published for a category absent from
+# this block.
+#
+# TERMINOLOGY, decided 2026-09-28 against the portal's own metadata. The dataset publishes NO
+# description for `closed_date` and NO description for `status`, and carries no resolution or
+# disposition code. Nothing in the source therefore establishes that a closed record means the
+# physical condition was repaired, or when. The measure is named for what it is — "days to
+# recorded closure" — and never "completion time", "response time" or "resolution time", each of
+# which would assert something the source does not support.
+#
+# POTHOLES, audited 2026-09-27 (507,569 records):
+#   status        Completed 492,763 · Open 13,993 · Canceled 813
+#   closed_date   present on exactly 493,576 = Completed + Canceled, absent on every Open row.
+# So closure is recorded consistently, but a Canceled request also carries a closed_date.
+# Counting cancellations alongside closures would understate how long work actually takes, so
+# duration is computed from the City's own "Completed" status only. That status name is the
+# City's, quoted as data; it is not adopted as this project's description of the measure.
+#
+# What "Completed" does NOT establish: the dataset has no resolution or disposition code, so a
+# filled pothole, a request the crew could not locate, a condition already repaired, and a
+# referral elsewhere are indistinguishable. "Completed" means the record was closed, not that
+# a pothole was demonstrably filled. That limitation is published with every duration figure.
+# ----------------------------------------------------------------------------------------
+
+closure_semantics:
+  potholes:
+    audited: "2026-09-27"
+    duration_eligible_statuses: [Completed]
+    # Duplicates close when their parent is resolved, so their duration measures the linkage,
+    # not the work. 157,958 of 507,569 pothole records (31%) are duplicates, enough to move a
+    # median, so duration uses primary requests only.
+    duration_excludes_duplicates: true
+    open_records_excluded_from_duration: true
+    notes: >-
+      Days to recorded closure is the interval from created_date to closed_date for primary
+      requests carrying the City's "Completed" status. It measures when the City marked the 311
+      record closed. It is not a completion time, a response time or a resolution time, and it
+      does not establish that the pothole was repaired or when: the portal publishes no
+      description for closed_date and no resolution code.
+
+# ----------------------------------------------------------------------------------------
+# Duplicate and linkage model. Audited 2026-09-27 on the pothole categories: all 157,958
+# records flagged `duplicate` carry a `parent_sr_number`, and only 153 non-duplicates do, so
+# the flag and the parent link agree and either can identify a child request.
+#
+# Records are NEVER collapsed by geographic proximity. Two requests at the same corner may be
+# two real conditions, and the source does not say otherwise.
+# ----------------------------------------------------------------------------------------
+
+linkage:
+  duplicate_flag_column: duplicate
+  parent_column: parent_sr_number
+  # Published counts. Both are always available; neither is presented as "the" number.
+  counts:
+    raw: Every submission, including duplicates. What residents actually sent.
+    primary: Submissions not flagged as duplicates of another request.
+
+# ----------------------------------------------------------------------------------------
+# Coordinate quality. A record must have trustworthy coordinates before it enters spatial
+# analysis; anything else is flagged with a reason rather than quietly placed or dropped.
+# ----------------------------------------------------------------------------------------
+
+coordinate_quality:
+  chicago_bounds:
+    min_latitude: 41.60
+    max_latitude: 42.10
+    min_longitude: -87.95
+    max_longitude: -87.50
+  # Coordinates shared by an implausible number of records are a geocoding default, not a
+  # location. The information-only default point is the clearest case.
+  default_point_threshold: 1000

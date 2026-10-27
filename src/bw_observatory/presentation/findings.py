@@ -30,6 +30,10 @@ from typing import Any
 import yaml
 
 from bw_observatory.config import Settings
+from bw_observatory.presentation.city_services import (
+    CityServicesUnavailable,
+    build_category_report,
+)
 from bw_observatory.presentation.geography import (
     COMMUNITY_AREA_COLUMN,
     ProductGeography,
@@ -366,11 +370,102 @@ def calc_portion_distribution(context: CalcContext) -> Computed:
     )
 
 
+# -- city services -----------------------------------------------------------------------
+#
+# These read the same report the City Services page serves, so a brief and a page can never
+# disagree about a 311 number. 311 coverage starts later than crime coverage, so a year without
+# service-request data withholds rather than reporting a zero.
+
+
+def _pothole_report(context: CalcContext) -> Any | None:
+    """The pothole report for this geography and year, or None when 311 cannot answer."""
+    try:
+        return build_category_report(
+            context.data_dir, context.year, context.geography.geography_id, "potholes"
+        )
+    except (CityServicesUnavailable, FileNotFoundError):
+        return None
+
+
+def calc_pothole_request_change(context: CalcContext) -> Computed:
+    """Pothole requests submitted, against the same window of the prior year.
+
+    A count of reports, never of potholes and never of how well the City responded: residents
+    report at different rates, and the source carries no measure of how many potholes exist.
+    """
+    report = _pothole_report(context)
+    if report is None:
+        return Computed(values={}, withhold="no 311 service-request data for this period")
+    if report.prior_counts is None:
+        return Computed(values={}, withhold="no comparable prior-year window")
+
+    current = report.counts.raw
+    prior = report.prior_counts.raw
+    phrase, direction = _change_phrase(current, prior)
+    return Computed(
+        values={
+            "count": _count(current),
+            "prior": _count(prior),
+            "change": phrase,
+            "period_end": report.data_through,
+            "prior_period_end": report.prior_period_end or "",
+        },
+        evidence=[
+            FindingEvidence(
+                label=f"Submitted through {report.data_through}", value=_count(current)
+            ),
+            FindingEvidence(
+                label=f"Same window through {report.prior_period_end}", value=_count(prior)
+            ),
+            FindingEvidence(label="Not flagged as duplicates", value=_count(report.counts.primary)),
+        ],
+        direction=direction,
+    )
+
+
+def calc_pothole_duplicate_share(context: CalcContext) -> Computed:
+    """How much of the pothole request volume is the City's own duplicate flag.
+
+    Published as a question, not a conclusion. A high duplicate share is consistent with several
+    different explanations — repeat reporting of one long-lived condition, several residents
+    reporting the same block, or a request re-filed because nothing visibly changed — and this
+    data cannot separate them.
+    """
+    report = _pothole_report(context)
+    if report is None:
+        return Computed(values={}, withhold="no 311 service-request data for this period")
+    if report.counts.raw < 100:
+        return Computed(values={}, withhold="too few requests for a share to be meaningful")
+
+    share = report.counts.duplicate_share
+    if share is None:
+        return Computed(values={}, withhold="no duplicate share could be computed")
+
+    return Computed(
+        values={
+            "share": f"{share * 100:.0f}%",
+            "duplicates": _count(report.counts.duplicates),
+            "raw": _count(report.counts.raw),
+            "primary": _count(report.counts.primary),
+        },
+        evidence=[
+            FindingEvidence(label="Submissions", value=_count(report.counts.raw)),
+            FindingEvidence(
+                label="Flagged as duplicates of another request",
+                value=f"{_count(report.counts.duplicates)} ({share * 100:.0f}%)",
+            ),
+            FindingEvidence(label="Primary requests", value=_count(report.counts.primary)),
+        ],
+    )
+
+
 CALCULATIONS: dict[str, Callable[[CalcContext], Computed]] = {
     "overall_change": calc_overall_change,
     "largest_contributor": calc_largest_contributor,
     "enforcement_share": calc_enforcement_share,
     "portion_distribution": calc_portion_distribution,
+    "pothole_request_change": calc_pothole_request_change,
+    "pothole_duplicate_share": calc_pothole_duplicate_share,
 }
 
 
