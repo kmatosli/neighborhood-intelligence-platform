@@ -173,6 +173,18 @@ def check_release_identity(root: Path) -> list[str]:
     return problems
 
 
+def check_release_contents(root: Path) -> list[str]:
+    """The bytes being archived must be the ones release.json was cut from.
+
+    The identity check above compares small records only. This one re-hashes every Silver
+    partition against `release.json`, because a Silver rewrite that touches no ledger file (a
+    whole-year re-enrichment) is invisible to the ledger digest and to the API's runtime check.
+    """
+    from bw_observatory.release import verify_release_manifest  # local: only cutting needs it
+
+    return verify_release_manifest(root, REPO_ROOT / "config")
+
+
 def refuse_unsafe_target(target: Path) -> None:
     """Never let staging or extraction be, contain, or sit inside the source data tree."""
     source = SOURCE_DIR.resolve()
@@ -424,9 +436,11 @@ def main() -> int:
 
     if not args.verify_only:
         identity_problems = check_release_identity(SOURCE_DIR)
+        if not identity_problems:
+            identity_problems = check_release_contents(SOURCE_DIR)
         if identity_problems:
             fail(report, identity_problems)
-        log("Release identity       : PASS (release.json + Gold build for the same release)")
+        log("Release identity       : PASS (release.json, its Silver checksums, matching Gold)")
 
         # Phase: disk space. Need staging + archive + extraction + overhead.
         needed = source_bytes * 2 + source_bytes // 2 + 300 * 1024 * 1024

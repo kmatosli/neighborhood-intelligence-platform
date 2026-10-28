@@ -100,6 +100,30 @@ def test_trailing_12_month_boundaries_are_contiguous_and_inclusive(root: Path) -
     )
 
 
+def _days(first: date, last: date) -> pd.DataFrame:
+    return pd.DataFrame({"date": pd.date_range(first, last, freq="D").date})
+
+
+def test_trailing_12_months_are_exact_calendar_periods_across_leap_years() -> None:
+    coverage = _days(date(2022, 1, 1), date(2025, 12, 31))
+    # Ending 28 Feb after a leap year: starts 1 Mar, never on the previous 29 Feb.
+    after_leap = resolve_window(WINDOW_TRAILING, 2025, date(2025, 2, 28), coverage)
+    assert (after_leap.start, after_leap.end) == (date(2024, 3, 1), date(2025, 2, 28))
+    assert (after_leap.comparison_start, after_leap.comparison_end) == (
+        date(2023, 3, 1),
+        date(2024, 2, 29),
+    )
+    on_leap = resolve_window(WINDOW_TRAILING, 2024, date(2024, 2, 29), coverage)
+    assert (on_leap.start, on_leap.end) == (date(2023, 3, 1), date(2024, 2, 29))
+    assert (on_leap.comparison_start, on_leap.comparison_end) == (
+        date(2022, 3, 1),
+        date(2023, 2, 28),
+    )
+    # Each period is exactly 12 calendar months; only the one holding 29 Feb has 366 days.
+    model = after_leap.model()
+    assert (model.current.days, model.comparison.days) == (365, 366)
+
+
 def test_full_year_never_compares_a_partial_year(root: Path) -> None:
     window = resolve_window(WINDOW_FULL_YEAR, 2026, date(2026, 2, 14), load_coverage(root))
     assert (window.start, window.end) == (date(2025, 1, 1), date(2025, 12, 31))

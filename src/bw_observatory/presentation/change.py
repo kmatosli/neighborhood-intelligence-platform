@@ -194,9 +194,12 @@ def resolve_window(kind: str, year: int, through: date, coverage: pd.DataFrame) 
         window = Window(kind, label, start, end, *comparison)
     elif kind == WINDOW_TRAILING:
         end = through if year == through.year else date(year, 12, 31)
-        start = shift_years(end, -1) + timedelta(days=1)
+        # Exact calendar 12 months: the year before the day after `end`. Shifting `end` itself
+        # and adding a day would start a window ending 28 Feb on the previous 29 Feb (12 months
+        # and a day). A 12-month period containing 29 Feb has 366 days; both periods say so.
+        start = shift_years(end + timedelta(days=1), -1)
         comparison_end = start - timedelta(days=1)
-        comparison_start = shift_years(comparison_end, -1) + timedelta(days=1)
+        comparison_start = shift_years(start, -1)
         window = Window(
             kind,
             "Trailing 12 months against the 12 months before",

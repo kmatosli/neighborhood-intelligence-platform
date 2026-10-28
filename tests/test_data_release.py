@@ -86,3 +86,19 @@ def test_a_new_archive_requires_release_identity_and_matching_gold(tmp_path: Pat
         json.dumps({**build, "release_id": "bw-release-20260921"}), "utf-8"
     )
     assert any("Gold was built for" in p for p in check(tmp_path))
+
+
+def test_a_new_archive_requires_silver_to_match_release_json(tmp_path: Path) -> None:
+    import pandas as pd
+    from crime_release_fixtures import row, write_root
+
+    root = write_root(tmp_path / "release", [row("a", "2025-03-01", "THEFT")])
+    check = load_script().check_release_contents
+    assert check(root) == []
+
+    # A Silver rewrite that touches no ledger file: only the full checksums can see it.
+    silver = root / "silver" / "crime" / "crime_with_geography" / "2025.parquet"
+    frame = pd.read_parquet(silver)
+    frame.loc[0, "spatial_ward_current"] = "5"
+    frame.to_parquet(silver, index=False)
+    assert any("Silver 2025 checksum" in p for p in check(root))

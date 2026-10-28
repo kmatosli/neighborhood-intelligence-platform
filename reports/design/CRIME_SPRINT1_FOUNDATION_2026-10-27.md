@@ -301,7 +301,7 @@ notebook for them exists (A:172).
 | R-04 | Category contribution decomposition | only Σ = −398 reported; no per-type contributions | 2025 vs 2024 | Ward 20 | A:277, 293-298 | Partial: per-type Δ in `category_drivers`; no contribution share or reconciliation | Sprint 1 | **REQUIRES RECOMPUTATION BEFORE PUBLICATION** |
 | R-05 | Motor-vehicle-theft historical share | 4.9% → 13.2% (2023) → 8.4% | 2006 → 2023 → 2025 | Ward 20 | Cat:174-176 | No | Sprint 1 (overlay) | **REQUIRES RECOMPUTATION BEFORE PUBLICATION** |
 | R-06 | MVT count | 659 | 2025 | Ward 20 | D:65 | Partial (driver row) | Sprint 1 | **REQUIRES RECOMPUTATION BEFORE PUBLICATION** |
-| R-07 | Serious-offense composition | total 8,384 → 7,817; homicide 12 → 13; robbery 128 → 87 | 2023 → 2025 | Ward 20 | Cat:253-254; D:85-97 | No; mapping approved 2026-10-27 (§2) | Sprint 1 | **REQUIRES RECOMPUTATION BEFORE PUBLICATION** |
+| R-07 | Serious-offense composition | total 8,384 → 7,817 (Ward 20); homicide 12 → 13 and robbery 128 → 87 **were not Ward 20** — whole-Woodlawn-community-area counts inserted into a Ward 20 statement (§4.1) | 2023 → 2025 | stated as Ward 20; **mixed frames** | Cat:253-254; D:85-97 | Yes since Sprint 1 (Ward 20 values in §4.1); mapping approved 2026-10-27 (§2) | Sprint 1 | **WITHDRAWN** (geography-mixing transcription error); cite only the code-derived Ward 20 values |
 | R-08 | Revision between releases | 7,813 → 7,817 | July → September release, year 2025 | Ward 20 | Cat:275-277 | No release comparison exists | Sprint 1 (§1.5) | **REQUIRES RECOMPUTATION BEFORE PUBLICATION** |
 | R-09 | Source withdrawals | 210 `source_removed` (5 in Ward 20) | 2017–2026, reconciliation of 2026-09-15 | citywide / Ward 20 | A:686-688 | **Yes**: the reconciliation log and Silver `source_status`; re-derived 2026-10-27 | done | Reproducible (operational fact, not a finding) |
 | R-10 | Concentration / Gini | Gini 0.542 / 0.557 / 0.581; share of blocks holding 50% of reports 16.3% / 14.8% / 13.2% | 2016 / 2020 / 2025 | Ward 20, masked block | Cat:351-352; C:133-137 | No | Sprint 2 | **REQUIRES RECOMPUTATION BEFORE PUBLICATION** |
@@ -343,8 +343,8 @@ unless stated. **The code-derived value is authoritative; nothing was tuned to a
 | R-03 | Net change 2025 vs 2024 | −398 (reported −4.6%) | 7,817 vs 8,215: −398, −4.8%; Σ type Δ reconciles | MATCH (net); −4.6% superseded | |
 | R-04 | Largest type changes 2025 vs 2024 | not computed | weapons violation −164, battery −130, robbery −111, MVT −68, deceptive practice +51, narcotics +44 | NEW | First reproducible decomposition |
 | R-07 | Totals 2023 → 2025 | 8,384 → 7,817 | 8,384 → 7,817 | MATCH | |
-| R-07 | Homicide 2023 → 2025 | 12 → 13 | Ward 20: 28 → 13 (`01A` 28 → 13) | DIFFER | No built geography reproduces 12 for 2023 (Woodlawn portion 10, Washington Park portion 8); the original frame/period cannot be reconstructed |
-| R-07 | Robbery 2023 → 2025 | 128 → 87 | Ward 20: 334 → 225 | DIFFER | No built geography matches; not reproducible |
+| R-07 | Homicide 2023 → 2025 | 12 → 13 | Ward 20: 28 → 13 (`01A` 28 → 13) | INVALID (mixed frames) | 12 is the **whole Woodlawn community area** 2023 count (D:85-97); 13 matches Ward 20 2025 (and whole Englewood 2025). Whole Woodlawn 2025 is 7 |
+| R-07 | Robbery 2023 → 2025 | 128 → 87 | Ward 20: 334 → 225 | INVALID (mixed frames) | 128 and 87 are the **whole Woodlawn community area** counts (D:85-97), not Ward 20 |
 | R-07 | Selected FBI/NIBRS violent classes 2023 → 2025 | — | 1,149 (13.7%) → 946 (12.1%) | NEW | Approved overlay, first computation |
 | R-08 | Revision July → September, year 2025 | 7,813 → 7,817 | 7,813 → 7,817 (+5 entries / −1 exit); 2024: 8,216 → 8,215 | MATCH | 19 incidents touch 2024–2025: 4 added, 2 withdrawn, 1 reclassified, 1 re-placed, 11 arrest-flag changes (reasons not additive) |
 | R-09 | Source withdrawals in Ward 20 | 5 | 2024: 1 · 2025: 1 · 2026: 3 | MATCH | |
@@ -352,5 +352,23 @@ unless stated. **The code-derived value is authoritative; nothing was tuned to a
 Publication status after this check: R-01 (total, violent, property), R-05, R-06, R-03, R-08 and R-09
 are **reproducible by committed code** against `bw-release-20260921`; R-01/R-02 enforcement shares
 are reproducible at the code-derived values; the R-07 homicide/robbery research figures are
-**not reproducible and must not be cited** — the code-derived Ward 20 values replace them.
+**withdrawn and must not be cited as Ward 20** — the code-derived Ward 20 values replace them.
 Nothing from this table is typed into the application; the page computes every figure live.
+
+**R-07 cause (VERIFIED, independent review 2026-10-27).** The catalogue's CA-09 statement mixed
+geography frames — a research/transcription error, not a data, period, subtype or
+reported-ward effect. Recomputed from `bw-release-20260921`, spatial placement, current-source
+view:
+
+| Geography | 2023 total / homicide / robbery | 2025 total / homicide / robbery |
+|---|---|---|
+| Ward 20 | 8,384 / 28 / 334 | 7,817 / 13 / 225 |
+| Whole Woodlawn community area | 3,915 / 12 / 128 | 3,848 / 7 / 87 |
+
+The statement took Ward 20's totals and inserted whole-Woodlawn homicide (2023) and robbery
+(2023, 2025) counts; its 2025 homicide 13 matches Ward 20 (and, by coincidence, whole
+Englewood). Source-reported ward placement gives neither (2023: 29 / 337 of 8,469). Rule
+restated: a whole-community-area figure is never presented as a Ward-portion or Ward-wide
+value. Other rows from the same addendum were checked: R-20 (portion arrest shares 15.7% /
+20.2%) and R-21 (portion robbery 57 / 58) recompute exactly as Ward 20 portions; R-11 (Gini by
+portion) draws on the same table and must be checked for the same error when it is rebuilt.

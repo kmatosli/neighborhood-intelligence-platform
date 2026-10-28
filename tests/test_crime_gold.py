@@ -41,6 +41,7 @@ from bw_observatory.release import (
     build_release_manifest,
     read_release_manifest,
     verify_release_manifest,
+    write_release_manifest,
 )
 
 
@@ -137,6 +138,42 @@ def test_a_ward_row_outside_every_validated_portion_fails_the_build(tmp_path: Pa
     with pytest.raises(GoldUnavailable) as refused:
         check_gold(root, CONFIG_DIR)
     assert refused.value.condition == STALE
+
+
+def test_silver_changed_without_a_ledger_write_fails_the_build(root: Path) -> None:
+    # A whole-year re-enrichment rewrites Silver and touches no ledger file, so only the full
+    # checksums in release.json can tell; Gold must not reconcile to Silver release.json lacks.
+    silver = root / "silver" / "crime" / "crime_with_geography" / "2025.parquet"
+    frame = pd.read_parquet(silver)
+    frame.loc[frame["id"] == "a1", "spatial_ward_current"] = "5"
+    frame.to_parquet(silver, index=False)
+    with pytest.raises(GoldBuildError, match="Silver 2025 checksum"):
+        build_crime_gold(root, CONFIG_DIR)
+    with pytest.raises(GoldUnavailable) as refused:
+        check_gold(root, CONFIG_DIR)
+    assert refused.value.condition == STALE
+
+
+def test_a_missing_silver_year_fails_the_build_rather_than_reading_as_zero(
+    tmp_path: Path,
+) -> None:
+    root = write_root(
+        tmp_path / "r", [row("a", "2024-03-01", "THEFT"), row("b", "2026-03-01", "THEFT")]
+    )
+    with pytest.raises(GoldBuildError, match=r"missing for \[2025\]"):
+        build_crime_gold(root, CONFIG_DIR)
+    assert not (gold_dir(root) / "coverage.parquet").exists()
+
+
+def test_coverage_never_runs_past_the_last_silver_year(root: Path) -> None:
+    # Bronze 2026 stays (data_through 2026-02-14); Silver 2026 is gone, and release.json is
+    # re-cut so it agrees: coverage through 2026 would otherwise read 2026 as zeros.
+    (root / "silver" / "crime" / "crime_with_geography" / "2026.parquet").unlink()
+    write_release_manifest(
+        root, build_release_manifest(root, CONFIG_DIR, "dev-test", "development", commit="test")
+    )
+    with pytest.raises(GoldBuildError, match="not in the last Silver year"):
+        build_crime_gold(root, CONFIG_DIR)
 
 
 def test_an_undated_silver_row_still_reconciles_and_is_not_placed_on_a_day(

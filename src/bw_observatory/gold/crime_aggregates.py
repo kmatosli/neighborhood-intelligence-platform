@@ -59,6 +59,7 @@ from bw_observatory.release import (
     config_digests,
     ledger_digest,
     read_release_manifest,
+    verify_release_manifest,
 )
 
 GOLD_CRIME = Path("gold") / "crime"
@@ -271,10 +272,23 @@ def build_crime_gold(data_dir: Path, config_dir: Path, commit: str = "unknown") 
         geographies=[g.geography_id for g in geographies],
         rows=0,
     )
-    if build.input_ledger_sha256 != release.ledger_sha256:
+    # Full verification, not just the ledger: a Silver rewrite that touches no ledger file (a
+    # whole-year re-enrichment) would otherwise yield Gold that reconciles to the new Silver
+    # while release.json still describes the old one, and the runtime check could never tell.
+    for problem in verify_release_manifest(data_dir, config_dir):
         build.failures.append(
-            "release.json does not describe this root: its ledger digest differs from the "
-            "files on disk. Re-cut the release identity before building Gold."
+            f"release.json does not describe this root ({problem}) Re-cut the release "
+            "identity before building Gold."
+        )
+    # Coverage is one continuous run of days, so every year inside it must have a partition,
+    # and it must not run past the last one: a missing year would read as a complete zero.
+    gaps = sorted(set(range(years[0], years[-1] + 1)) - set(years))
+    if gaps:
+        build.failures.append(f"Silver crime partitions are missing for {gaps}.")
+    if release.data_through is not None and int(release.data_through[:4]) != years[-1]:
+        build.failures.append(
+            f"release.json data_through {release.data_through} is not in the last Silver "
+            f"year ({years[-1]})."
         )
     # Config is code (it ships in Git), not release data: release.json records the config of
     # the cut as provenance, and Gold records the config it was built with. The runtime check

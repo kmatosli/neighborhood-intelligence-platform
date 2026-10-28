@@ -258,8 +258,16 @@ not causation; both may follow population or land use.
 
 ## CA-09 · Severity & Composition — **R1 / R4, M**
 **Question.** Does a flat total hide a rise in the most serious offences?
-**Finding (VERIFIED).** Ward 20 2023 → 2025: total 8,384 → 7,817 while homicide 12 → 13 and
-robbery 128 → 87 — the total and its most serious components move differently.
+**Finding — WITHDRAWN (2026-10-27, research/transcription error).** This entry originally read
+"Ward 20 2023 → 2025: total 8,384 → 7,817 while homicide 12 → 13 and robbery 128 → 87" and was
+labelled VERIFIED. It mixed geography frames: the totals were Ward 20, but 12 and 128 (2023)
+and 87 (2025) are the **whole Woodlawn community area** counts from the neighborhood
+addendum's baseline table (D:85-97), and the 2025 homicide 13 matches Ward 20 (and, by
+coincidence, whole Englewood). Those numbers must not be cited as Ward 20 figures. The
+reproducible Ward 20 values (committed code, `bw-release-20260921`, spatial placement) are
+authoritative: homicide 28 → 13, robbery 334 → 225, total 8,384 → 7,817. Whole-community-area
+figures must never be presented as Ward-portion or Ward-wide values. See the foundation
+register, R-07 (`CRIME_SPRINT1_FOUNDATION_2026-10-27.md` §4.1).
 **Interface.** Composition ribbon + a serious-offence small-multiple row; **counts always on
 screen**.
 **Limitations.** A **harm-weighted index requires separate approval**: weights are normative
