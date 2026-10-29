@@ -102,3 +102,47 @@ def test_a_new_archive_requires_silver_to_match_release_json(tmp_path: Path) -> 
     frame.loc[0, "spatial_ward_current"] = "5"
     frame.to_parquet(silver, index=False)
     assert any("Silver 2025 checksum" in p for p in check(root))
+
+
+def _year_root(tmp_path: Path, last: str) -> Path:
+    from crime_release_fixtures import row, write_root
+
+    return write_root(
+        tmp_path / "release", [row("a", "2025-03-01", "THEFT"), row("b", last, "THEFT")]
+    )
+
+
+def test_a_new_archive_requires_exactly_2006_to_the_data_through_year(tmp_path: Path) -> None:
+    script = load_script()
+    root = _year_root(tmp_path, "2026-09-06")
+    assert script.expected_years(root) == range(2006, 2027)
+    assert script.check_years(root, range(2006, 2027)) == []
+    later = _year_root(tmp_path / "later", "2027-01-15")
+    assert script.expected_years(later) == range(2006, 2028)  # 2027 needs no source edit
+    assert script.check_years(later, range(2006, 2028)) == []
+    assert script.expected_years(tmp_path / "no-release-json") is None
+
+
+@pytest.mark.parametrize(
+    ("layer", "year", "message"),
+    [
+        ("bronze", 2006, "Bronze is missing years: 2006"),
+        ("silver", 2015, "Silver is missing years: 2015"),
+        ("silver", 2026, "Silver is missing years: 2026"),
+        ("silver", 2027, "Silver has years outside 2006-2026: 2027"),
+    ],
+)
+def test_a_new_archive_refuses_a_missing_or_extra_year(
+    tmp_path: Path, layer: str, year: int, message: str
+) -> None:
+    script = load_script()
+    root = _year_root(tmp_path, "2026-09-06")
+    subdir = script.BRONZE_CRIME if layer == "bronze" else script.SILVER_CRIME
+    target = root / subdir / f"{year}.parquet"
+    if target.exists():
+        target.unlink()
+    else:  # a year after data_through
+        target.write_bytes((root / subdir / "2025.parquet").read_bytes())
+    expected = script.expected_years(root)
+    assert expected == range(2006, 2027)
+    assert message in script.check_years(root, expected)

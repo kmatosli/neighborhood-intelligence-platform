@@ -58,6 +58,29 @@ LEDGER_FILES = (
 # Config read when deriving products; part of the identity because a changed grouping
 # changes the meaning of a derived count.
 CONFIG_FILES = ("crime_categories.yml", "geographies.yml")
+# The first year of the City crime dataset. The last expected year is never a constant: it is
+# the year of the release's `data_through`, so a 2027 release needs no source edit.
+FIRST_CRIME_YEAR = 2006
+
+
+def expected_crime_years(data_through: str) -> range:
+    """Exactly the crime years a release must hold: 2006 through `data_through`'s year."""
+    return range(FIRST_CRIME_YEAR, int(data_through[:4]) + 1)
+
+
+def crime_year_problems(label: str, found: set[int], expected: range) -> list[str]:
+    """Problems unless `found` is exactly `expected` (missing first, middle, last, or extra)."""
+    problems: list[str] = []
+    missing = sorted(set(expected) - found)
+    extra = sorted(found - set(expected))
+    if missing:
+        problems.append(f"{label} is missing years: {', '.join(map(str, missing))}")
+    if extra:
+        problems.append(
+            f"{label} has years outside {expected.start}-{expected.stop - 1}: "
+            f"{', '.join(map(str, extra))}"
+        )
+    return problems
 
 
 class ReleaseManifestError(RuntimeError):

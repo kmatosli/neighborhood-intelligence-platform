@@ -40,7 +40,8 @@ import {
 
 const WINDOW_OPTIONS: { kind: ChangeWindowKind; label: string }[] = [
   { kind: "ytd", label: "Year to date" },
-  { kind: "t12m", label: "Trailing 12 months" },
+  // The API key stays `t12m`; the comparison is two equal 365-day periods (owner, 2026-10-28).
+  { kind: "t12m", label: "Trailing 365 days vs previous 365 days" },
   { kind: "full_year", label: "Latest complete year" },
 ];
 
@@ -479,7 +480,8 @@ function HistoryPanel({ data }: { data: ChangeResponse }) {
             )}
           </div>
           <figcaption className="mt-2 text-sm text-muted-foreground">
-            Each point is the total of the 12 complete months ending that month. The latest point is{" "}
+            Each point is the total of the 12 complete calendar months ending that month (unlike the
+            comparison above, which uses equal 365-day periods). The latest point is{" "}
             {formatCount(trailing[trailing.length - 1].total)} (
             {trailing[trailing.length - 1].label}).
           </figcaption>

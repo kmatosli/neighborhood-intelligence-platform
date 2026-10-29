@@ -39,6 +39,7 @@ from bw_observatory.release import (
     STATUS_RELEASE,
     ReleaseManifestError,
     build_release_manifest,
+    expected_crime_years,
     read_release_manifest,
     verify_release_manifest,
     write_release_manifest,
@@ -72,7 +73,7 @@ def test_release_manifest_is_self_describing(root: Path) -> None:
     manifest = read_release_manifest(root)
     assert manifest.release_id == "dev-test" and manifest.status == "development"
     assert manifest.data_through == "2026-02-14"
-    assert set(manifest.silver_sha256) == {"2025", "2026"}
+    assert set(manifest.silver_sha256) == {str(y) for y in range(2006, 2027)}
     assert manifest.source_dataset_id == "ijzp-q8t2"
     assert set(manifest.config_sha256) == {"crime_categories.yml", "geographies.yml"}
     assert verify_release_manifest(root, CONFIG_DIR) == []
@@ -154,25 +155,58 @@ def test_silver_changed_without_a_ledger_write_fails_the_build(root: Path) -> No
     assert refused.value.condition == STALE
 
 
-def test_a_missing_silver_year_fails_the_build_rather_than_reading_as_zero(
-    tmp_path: Path,
-) -> None:
-    root = write_root(
-        tmp_path / "r", [row("a", "2024-03-01", "THEFT"), row("b", "2026-03-01", "THEFT")]
+def _remove_partition(root: Path, layer: str, year: int) -> None:
+    """Drop one year's partition and re-cut release.json so only the year rule can object."""
+    subdir = "bronze/crime" if layer == "bronze" else "silver/crime/crime_with_geography"
+    (root / subdir / f"{year}.parquet").unlink()
+    write_release_manifest(
+        root, build_release_manifest(root, CONFIG_DIR, "dev-test", "development", commit="test")
     )
-    with pytest.raises(GoldBuildError, match=r"missing for \[2025\]"):
+
+
+def test_expected_years_run_from_2006_to_the_data_through_year() -> None:
+    assert expected_crime_years("2026-09-06") == range(2006, 2027)
+    assert expected_crime_years("2027-01-15") == range(2006, 2028)  # no source edit for 2027
+
+
+def test_a_contiguous_2006_to_data_through_release_builds(root: Path) -> None:
+    build = build_crime_gold(root, CONFIG_DIR)
+    assert build.years == list(range(2006, 2027)) and not build.failures
+
+
+def test_a_2027_release_requires_2027(tmp_path: Path) -> None:
+    rows = [row("a", "2026-03-01", "THEFT"), row("b", "2027-01-15", "THEFT")]
+    assert build_crime_gold(write_root(tmp_path / "ok", rows), CONFIG_DIR).years == list(
+        range(2006, 2028)
+    )
+    short = write_root(tmp_path / "short", rows)
+    _remove_partition(short, "silver", 2027)
+    with pytest.raises(GoldBuildError, match="Silver is missing years: 2027"):
+        build_crime_gold(short, CONFIG_DIR)
+
+
+@pytest.mark.parametrize(
+    ("layer", "year"),
+    [("silver", 2006), ("bronze", 2006), ("silver", 2015), ("bronze", 2015), ("silver", 2026)],
+)
+def test_a_missing_first_middle_or_last_year_fails_the_build_rather_than_reading_as_zero(
+    root: Path, layer: str, year: int
+) -> None:
+    _remove_partition(root, layer, year)
+    with pytest.raises(GoldBuildError, match=rf"{layer.capitalize()} is missing years: {year}"):
         build_crime_gold(root, CONFIG_DIR)
     assert not (gold_dir(root) / "coverage.parquet").exists()
 
 
-def test_coverage_never_runs_past_the_last_silver_year(root: Path) -> None:
-    # Bronze 2026 stays (data_through 2026-02-14); Silver 2026 is gone, and release.json is
-    # re-cut so it agrees: coverage through 2026 would otherwise read 2026 as zeros.
-    (root / "silver" / "crime" / "crime_with_geography" / "2026.parquet").unlink()
+def test_a_year_after_data_through_fails_the_build(root: Path) -> None:
+    # data_through is 2026-02-14; a 2027 partition would be counted beyond what the release
+    # says it covers.
+    silver = root / "silver" / "crime" / "crime_with_geography"
+    (silver / "2027.parquet").write_bytes((silver / "2025.parquet").read_bytes())
     write_release_manifest(
         root, build_release_manifest(root, CONFIG_DIR, "dev-test", "development", commit="test")
     )
-    with pytest.raises(GoldBuildError, match="not in the last Silver year"):
+    with pytest.raises(GoldBuildError, match="Silver has years outside 2006-2026: 2027"):
         build_crime_gold(root, CONFIG_DIR)
 
 
@@ -188,11 +222,11 @@ def test_an_undated_silver_row_still_reconciles_and_is_not_placed_on_a_day(
 def test_coverage_distinguishes_missing_future_and_partial_from_zero(root: Path) -> None:
     build_crime_gold(root, CONFIG_DIR)
     coverage = load_coverage(root)
-    assert coverage["date"].min() == date(2025, 1, 1)
+    assert coverage["date"].min() == date(2006, 1, 1)
     assert coverage["date"].max() == date(2026, 2, 14)  # nothing after data-through
     assert covered(coverage, date(2026, 2, 1), date(2026, 2, 14))
     assert not covered(coverage, date(2026, 2, 1), date(2026, 2, 15))  # future ≠ zero
-    assert not covered(coverage, date(2024, 12, 31), date(2025, 1, 2))  # before history
+    assert not covered(coverage, date(2005, 12, 31), date(2006, 1, 2))  # before history
     february = coverage[(coverage["year"] == 2026) & (coverage["month"] == 2)]
     january = coverage[(coverage["year"] == 2026) & (coverage["month"] == 1)]
     assert not february["month_complete"].any() and january["month_complete"].all()

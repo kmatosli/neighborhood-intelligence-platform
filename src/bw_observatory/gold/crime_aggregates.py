@@ -55,8 +55,11 @@ from bw_observatory.presentation.overview import (
     silver_path,
 )
 from bw_observatory.release import (
+    FIRST_CRIME_YEAR,
     ReleaseManifestError,
     config_digests,
+    crime_year_problems,
+    expected_crime_years,
     ledger_digest,
     read_release_manifest,
     verify_release_manifest,
@@ -67,7 +70,7 @@ DAILY_COUNTS_FILENAME = "daily_counts.parquet"
 COVERAGE_FILENAME = "coverage.parquet"
 BUILD_FILENAME = "_build.json"
 SCHEMA_VERSION = 1
-FIRST_YEAR = 2006
+FIRST_YEAR = FIRST_CRIME_YEAR
 
 BUILD_PASS = "PASS"
 BUILD_FAIL = "FAIL"
@@ -144,6 +147,11 @@ def built_geographies() -> list[ProductGeography]:
 def _years(data_dir: Path) -> list[int]:
     silver_dir = silver_path(data_dir, FIRST_YEAR).parent
     return sorted(int(p.stem) for p in silver_dir.glob("*.parquet") if p.stem.isdigit())
+
+
+def _bronze_years(data_dir: Path) -> set[int]:
+    bronze_dir = bronze_path(data_dir, FIRST_YEAR).parent
+    return {int(p.stem) for p in bronze_dir.glob("*.parquet") if p.stem.isdigit()}
 
 
 def _incident_day(values: pd.Series) -> pd.Series:
@@ -280,16 +288,23 @@ def build_crime_gold(data_dir: Path, config_dir: Path, commit: str = "unknown") 
             f"release.json does not describe this root ({problem}) Re-cut the release "
             "identity before building Gold."
         )
-    # Coverage is one continuous run of days, so every year inside it must have a partition,
-    # and it must not run past the last one: a missing year would read as a complete zero.
-    gaps = sorted(set(range(years[0], years[-1] + 1)) - set(years))
-    if gaps:
-        build.failures.append(f"Silver crime partitions are missing for {gaps}.")
-    if release.data_through is not None and int(release.data_through[:4]) != years[-1]:
-        build.failures.append(
-            f"release.json data_through {release.data_through} is not in the last Silver "
-            f"year ({years[-1]})."
-        )
+    # Coverage is one continuous run of days, so Bronze and Silver must each hold exactly
+    # 2006 through the year of data_through: a missing year would read as a complete zero, and
+    # a year past data_through would be counted beyond what the release says it covers. A
+    # wrong year set stops the build here, before any partition is read. (No data_through is
+    # reported below, where coverage needs it.)
+    if release.data_through is not None:
+        expected_years = expected_crime_years(release.data_through)
+        year_problems = [
+            problem
+            for label, found in (("Bronze", _bronze_years(data_dir)), ("Silver", set(years)))
+            for problem in crime_year_problems(label, found, expected_years)
+        ]
+        if year_problems:
+            build.failures.extend(year_problems)
+            build.status = BUILD_FAIL
+            _write_build(target_dir, build)
+            raise GoldBuildError("; ".join(build.failures))
     # Config is code (it ships in Git), not release data: release.json records the config of
     # the cut as provenance, and Gold records the config it was built with. The runtime check
     # compares the live config with Gold's record, so a config change makes Gold stale until it

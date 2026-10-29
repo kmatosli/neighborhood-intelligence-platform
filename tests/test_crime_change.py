@@ -8,7 +8,7 @@ pretend to be a partition, descriptive (never causal) language, and refusal over
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -91,11 +91,12 @@ def test_leap_day_clamps_to_28_february() -> None:
     assert shift_years(date(2024, 2, 28), -1) == date(2023, 2, 28)
 
 
-def test_trailing_12_month_boundaries_are_contiguous_and_inclusive(root: Path) -> None:
+def test_trailing_365_day_boundaries_are_contiguous_and_inclusive(root: Path) -> None:
     window = resolve_window(WINDOW_TRAILING, 2026, date(2026, 2, 14), load_coverage(root))
     assert (window.start, window.end) == (date(2025, 2, 15), date(2026, 2, 14))
+    # 365 days each: the comparison holds 29 Feb 2024, so it starts a day later than 15 Feb.
     assert (window.comparison_start, window.comparison_end) == (
-        date(2024, 2, 15),
+        date(2024, 2, 16),
         date(2025, 2, 14),
     )
 
@@ -104,24 +105,46 @@ def _days(first: date, last: date) -> pd.DataFrame:
     return pd.DataFrame({"date": pd.date_range(first, last, freq="D").date})
 
 
-def test_trailing_12_months_are_exact_calendar_periods_across_leap_years() -> None:
-    coverage = _days(date(2022, 1, 1), date(2025, 12, 31))
-    # Ending 28 Feb after a leap year: starts 1 Mar, never on the previous 29 Feb.
-    after_leap = resolve_window(WINDOW_TRAILING, 2025, date(2025, 2, 28), coverage)
-    assert (after_leap.start, after_leap.end) == (date(2024, 3, 1), date(2025, 2, 28))
-    assert (after_leap.comparison_start, after_leap.comparison_end) == (
-        date(2023, 3, 1),
-        date(2024, 2, 29),
-    )
-    on_leap = resolve_window(WINDOW_TRAILING, 2024, date(2024, 2, 29), coverage)
-    assert (on_leap.start, on_leap.end) == (date(2023, 3, 1), date(2024, 2, 29))
-    assert (on_leap.comparison_start, on_leap.comparison_end) == (
-        date(2022, 3, 1),
-        date(2023, 2, 28),
-    )
-    # Each period is exactly 12 calendar months; only the one holding 29 Feb has 366 days.
-    model = after_leap.model()
-    assert (model.current.days, model.comparison.days) == (365, 366)
+@pytest.mark.parametrize(
+    ("through", "current", "comparison"),
+    [
+        # After a leap day: the comparison holds 29 Feb 2024 and still has 365 days.
+        (
+            date(2025, 2, 28),
+            (date(2024, 3, 1), date(2025, 2, 28)),
+            (date(2023, 3, 2), date(2024, 2, 29)),
+        ),
+        # On a leap day.
+        (
+            date(2024, 2, 29),
+            (date(2023, 3, 2), date(2024, 2, 29)),
+            (date(2022, 3, 2), date(2023, 3, 1)),
+        ),
+        # The day after the 28 Feb that follows a leap year.
+        (
+            date(2025, 3, 1),
+            (date(2024, 3, 2), date(2025, 3, 1)),
+            (date(2023, 3, 3), date(2024, 3, 1)),
+        ),
+        # An ordinary date (the current release's data_through).
+        (
+            date(2026, 9, 6),
+            (date(2025, 9, 7), date(2026, 9, 6)),
+            (date(2024, 9, 7), date(2025, 9, 6)),
+        ),
+    ],
+)
+def test_trailing_365_days_are_equal_exposure_across_leap_years(
+    through: date, current: tuple[date, date], comparison: tuple[date, date]
+) -> None:
+    coverage = _days(date(2022, 1, 1), date(2026, 12, 31))
+    window = resolve_window(WINDOW_TRAILING, through.year, through, coverage)
+    assert (window.start, window.end) == current
+    assert (window.comparison_start, window.comparison_end) == comparison
+    model = window.model()
+    assert (model.current.days, model.comparison.days) == (365, 365)
+    assert window.comparison_end + timedelta(days=1) == window.start  # no gap, no overlap
+    assert window.label == "Trailing 365 days vs previous 365 days"
 
 
 def test_full_year_never_compares_a_partial_year(root: Path) -> None:
@@ -132,7 +155,8 @@ def test_full_year_never_compares_a_partial_year(root: Path) -> None:
 
 def test_an_uncovered_comparison_is_refused_not_zero(root: Path) -> None:
     with pytest.raises(WindowUnavailable):
-        resolve_window(WINDOW_YTD, 2023, date(2026, 2, 14), load_coverage(root))
+        # History starts in 2006 (FIRST_CRIME_YEAR), so 2006's comparison year is uncovered.
+        resolve_window(WINDOW_YTD, 2006, date(2026, 2, 14), load_coverage(root))
     with pytest.raises(WindowUnavailable):
         resolve_window(WINDOW_YTD, 2027, date(2026, 2, 14), load_coverage(root))
 
@@ -266,12 +290,15 @@ def test_monthly_series_flags_the_partial_month_and_trailing_sums_twelve(root: P
     last = result.monthly[-1]
     assert (last.year, last.month, last.complete) == (2026, 2, False)
     first_trailing = result.trailing_12_months[0]
-    assert (first_trailing.year, first_trailing.month) == (2023, 12)
-    # One THEFT a month from the monthly fixture (plus the Feb 2026 extras, which are partial).
-    assert {p.total for p in result.trailing_12_months} == {12}
-    assert [a.year for a in result.annual if a.complete] == [2023, 2024, 2025]
+    assert (first_trailing.year, first_trailing.month) == (2006, 12)
+    # One THEFT a month from Jan 2023 (plus the Feb 2026 extras, which are partial); the years
+    # before are empty partitions, so their trailing sums are zero, not missing.
+    since_2023 = [p for p in result.trailing_12_months if (p.year, p.month) >= (2023, 12)]
+    assert {p.total for p in since_2023} == {12}
+    assert {p.total for p in result.trailing_12_months if p.year < 2023} == {0}
+    assert [a.year for a in result.annual if a.complete] == list(range(2006, 2026))
     same = result.same_span[0]
-    assert same.lookback_years == 5 and [v.year for v in same.values] == [2023, 2024, 2025]
+    assert same.lookback_years == 5 and [v.year for v in same.values] == list(range(2021, 2026))
 
 
 # -- trend -----------------------------------------------------------------------------

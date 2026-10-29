@@ -53,8 +53,11 @@ EXTRACT_DIR = WORK_ROOT / "extract"
 # expects them. Only those that exist in the source are archived; absent ones are reported.
 TOP_LEVEL = ("bronze", "silver", "reference", "catalog", "review", "gold")
 
-# Bronze and Silver crime years that must both be present and complete.
-REQUIRED_YEARS = range(2006, 2027)
+# Bronze and Silver must each hold exactly 2006 through the year of `release.json`'s
+# data_through (`bw_observatory.release.expected_crime_years`). Only the two archives cut before
+# release.json existed (2026-07-26, 2026-09-21) are checked against this frozen range instead,
+# under --verify-only; a new cut requires release.json, so it never needs extending.
+LEGACY_YEARS = range(2006, 2027)
 BRONZE_CRIME = Path("bronze") / "crime"
 SILVER_CRIME = Path("silver") / "crime" / "crime_with_geography"
 
@@ -120,14 +123,26 @@ def years_present(root: Path, subdir: Path) -> set[int]:
     return years
 
 
-def check_years(root: Path) -> list[str]:
-    """Return a list of problems if Bronze or Silver is missing any year in 2006-2026."""
+def expected_years(root: Path) -> range | None:
+    """2006 through the year of the root's `release.json` data_through; None without one."""
+    import json  # local: the rest of the script needs no JSON
+
+    from bw_observatory.release import expected_crime_years  # local: the one shared rule
+
+    try:
+        data_through = json.loads((root / "release.json").read_text("utf-8"))["data_through"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return expected_crime_years(data_through) if isinstance(data_through, str) else None
+
+
+def check_years(root: Path, expected: range) -> list[str]:
+    """Problems unless Bronze and Silver each hold exactly the `expected` years."""
+    from bw_observatory.release import crime_year_problems  # local: the one shared rule
+
     problems: list[str] = []
     for label, subdir in (("Bronze", BRONZE_CRIME), ("Silver", SILVER_CRIME)):
-        found = years_present(root, subdir)
-        missing = [str(y) for y in REQUIRED_YEARS if y not in found]
-        if missing:
-            problems.append(f"{label} is missing years: {', '.join(missing)}")
+        problems.extend(crime_year_problems(label, years_present(root, subdir), expected))
     return problems
 
 
@@ -300,7 +315,7 @@ def build_archive(staging: Path, archive: Path) -> None:
                 tar.addfile(info, handle)
 
 
-def inspect_archive(archive: Path) -> tuple[list[str], set[int], set[int]]:
+def inspect_archive(archive: Path, expected: range) -> tuple[list[str], set[int], set[int]]:
     """Check stored permissions and paths without extracting. Return (problems, bronze, silver)."""
     problems: list[str] = []
     bronze: set[int] = set()
@@ -339,11 +354,10 @@ def inspect_archive(archive: Path) -> tuple[list[str], set[int], set[int]]:
     for unexpected in sorted(top_level - set(TOP_LEVEL)):
         problems.append(f"unexpected top-level entry in archive: {unexpected}/")
 
-    for year in REQUIRED_YEARS:
-        if year not in bronze:
-            problems.append(f"Bronze year missing from archive: {year}")
-        if year not in silver:
-            problems.append(f"Silver year missing from archive: {year}")
+    from bw_observatory.release import crime_year_problems  # local: the one shared rule
+
+    problems += crime_year_problems("Archive Bronze", bronze, expected)
+    problems += crime_year_problems("Archive Silver", silver, expected)
 
     return (problems, bronze, silver)
 
@@ -428,11 +442,16 @@ def main() -> int:
     log(f"Source files          : {len(source_inv)}")
     log(f"Source total size      : {human(source_bytes)} ({source_bytes:,} bytes)")
 
-    year_problems = check_years(SOURCE_DIR)
+    expected = expected_years(SOURCE_DIR)
+    if expected is None:
+        if not args.verify_only:
+            fail(report, ["release.json with a data_through is required to cut an archive."])
+        expected = LEGACY_YEARS
+    year_problems = check_years(SOURCE_DIR, expected)
     if year_problems:
         fail(report, year_problems)
-    log(f"Bronze years           : {min(REQUIRED_YEARS)}-{max(REQUIRED_YEARS)} complete")
-    log(f"Silver years           : {min(REQUIRED_YEARS)}-{max(REQUIRED_YEARS)} complete")
+    log(f"Bronze years           : {expected.start}-{expected.stop - 1} exactly")
+    log(f"Silver years           : {expected.start}-{expected.stop - 1} exactly")
 
     if not args.verify_only:
         identity_problems = check_release_identity(SOURCE_DIR)
@@ -469,7 +488,7 @@ def main() -> int:
         sys.exit(f"Archive not found: {archive_path}. Run without --verify-only first.")
 
     # Phase: inspect archive.
-    archive_problems, arc_bronze, arc_silver = inspect_archive(archive_path)
+    archive_problems, arc_bronze, arc_silver = inspect_archive(archive_path, expected)
     if archive_problems:
         fail(report, archive_problems)
     log("Archive permissions    : PASS (dirs 0755, files 0644, no unsafe paths, no junk)")

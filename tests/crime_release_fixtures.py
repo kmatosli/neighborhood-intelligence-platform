@@ -16,6 +16,7 @@ import pandas as pd
 
 from bw_observatory.config import Settings
 from bw_observatory.release import (
+    FIRST_CRIME_YEAR,
     STATUS_DEVELOPMENT,
     build_release_manifest,
     write_release_manifest,
@@ -55,7 +56,10 @@ def write_root(
     frame = pd.DataFrame(rows)
     frame["_year"] = frame["date"].str.slice(0, 4).astype(int)
     manifest = []
-    for year, part in frame.groupby("_year"):
+    # A release holds every year from 2006 (FIRST_CRIME_YEAR) through its last; the years
+    # without rows here are written as empty partitions, as a real quiet year would be.
+    for year in range(FIRST_CRIME_YEAR, int(frame["_year"].max()) + 1):
+        part = frame[frame["_year"] == year]
         with_attributes = part[part["bronze"]]
         bronze = pd.DataFrame(
             {

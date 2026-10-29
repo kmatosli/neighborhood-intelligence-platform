@@ -60,7 +60,7 @@ proof fails.
 - **Grain:** one row per (`geography_id`, `date`, `primary_type`, `fbi_code`). Sparse: no row
   means zero, **but only inside a covered day** (§1.3).
 - **Why daily, not monthly:** like-for-like windows cut on a day. Year-to-date through 09-06
-  against the prior year through 09-06, or trailing 12 months ending 09-06, cannot be built from
+  against the prior year through 09-06, or the trailing 365 days ending 09-06, cannot be built from
   monthly totals without fabricating the partial month. Monthly and annual series are rollups of
   this table at read time.
 - **Size (INFERRED):** Ward 20 has ≈ 8k incidents a year, giving under 1M rows over 21 years
@@ -258,10 +258,11 @@ Out of Trends scope, but the same pattern, logged for a later lane (not Sprint 1
 ```
 Trends — "Is it getting better or worse?"     (geo + year from the shell; nothing page-local)
 ├─ 1 · Change                    LIVE in Sprint 1
-│     comparison window: YTD vs same YTD · trailing 12 months · last full year   ← real control
+│     comparison window: YTD vs same YTD · trailing 365 days vs previous 365 days · last full year
+│       (API key `t12m`; equal 365-day exposure, owner 2026-10-28)                ← real control
 │     decomposition table (all types, counts first, contribution, reconciliation row)
 │     long-run composition (partition) + overlays (separately, never stacked to 100%)
-│     trend context (monthly, rolling 12-month, 3/5/10-year, full history)
+│     trend context (monthly, rolling 12 complete calendar months, 3/5/10-year, full history)
 │     direction: Kendall tau-b on complete annual totals (tau, p, n, descriptive label)
 │       — SPC limits and change points are DEFERRED (separate CA-12 review)
 │     same-calendar-span history (prior 5 / 10 years: min, median, max, current)
