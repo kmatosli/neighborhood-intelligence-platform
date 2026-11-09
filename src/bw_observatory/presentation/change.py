@@ -29,6 +29,8 @@ detection.
 from __future__ import annotations
 
 import math
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -41,13 +43,24 @@ from scipy.stats import kendalltau
 
 from bw_observatory.config import Settings
 from bw_observatory.gold.crime_aggregates import (
+    BUILD_FILENAME,
+    COVERAGE_FILENAME,
+    DAILY_COUNTS_FILENAME,
+    GoldBuild,
     GoldUnavailable,
     check_gold,
     covered,
+    gold_dir,
     load_coverage,
     load_daily_counts,
 )
-from bw_observatory.gold.revisions import in_window, latest_revision
+from bw_observatory.gold.revisions import (
+    EVENTS_FILENAME,
+    PROOF_FILENAME,
+    REVISIONS_DIR,
+    in_window,
+    latest_revision,
+)
 from bw_observatory.ingest.freshness import crime_freshness
 from bw_observatory.presentation.findings import load_finding_specs
 from bw_observatory.presentation.geography import ProductGeography, geography_scope_note
@@ -83,7 +96,7 @@ from bw_observatory.presentation.overview import (
     load_enforcement_generated_types,
     resolve_geography,
 )
-from bw_observatory.release import read_release_manifest
+from bw_observatory.release import RELEASE_FILENAME, read_release_manifest, sha256_file
 
 WINDOW_YTD = "ytd"
 WINDOW_TRAILING = "t12m"
@@ -760,6 +773,114 @@ def revision_summary(
     )
 
 
+# -- response cache --------------------------------------------------------------------
+#
+# Assembling a Change response (decomposition, history, sensitivity, revisions) costs most of
+# a second on a full release; proving Gold still describes the release (`check_gold`) costs
+# milliseconds. So the assembled response is cached, and the proof is never skipped: every
+# request runs `check_gold` first, and only a request that passes it may read the cache.
+#
+# The key is the validated identity of everything the response is computed from, so no entry
+# can outlive a change to the data or to the analytical definition:
+#   - the resolved release root (switching `/var/data/current` changes it);
+#   - the release id and the digest of `release.json` (status, data_through, notes);
+#   - the digest of Gold's `_build.json` (a rebuild changes `built_at` even for one release),
+#     with the ledger and config digests it vouches for, and the size + mtime of the two Gold
+#     tables (a hand-copied table without a rebuild must not hide behind an old entry);
+#   - the findings config digest (it sets the minimum counts that suppress a percentage);
+#   - every revision comparison's proof digest and events-file stamp (a comparison built
+#     later for the same release changes the revision summary);
+#   - the request: geography, year as asked, window.
+# `freshness_status` is not part of the analysis: it moves with the clock, so it is read live
+# on every request and written into a copy of the cached response.
+#
+# Bounded LRU: at most CHANGE_CACHE_SIZE entries per process, least recently used evicted
+# first; no background refresh. Two concurrent misses for one key may both compute; the
+# results are identical and the second replaces the first.
+
+CHANGE_CACHE_SIZE = 128
+
+CacheKey = tuple[Any, ...]
+
+
+class ChangeResponseCache:
+    def __init__(self, maxsize: int) -> None:
+        self.maxsize = maxsize
+        self._entries: OrderedDict[CacheKey, ChangeResponse] = OrderedDict()
+        self._lock = threading.Lock()
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key: CacheKey) -> ChangeResponse | None:
+        with self._lock:
+            found = self._entries.get(key)
+            if found is None:
+                self.misses += 1
+                return None
+            self._entries.move_to_end(key)
+            self.hits += 1
+            return found
+
+    def put(self, key: CacheKey, response: ChangeResponse) -> None:
+        with self._lock:
+            self._entries[key] = response
+            self._entries.move_to_end(key)
+            while len(self._entries) > self.maxsize:
+                self._entries.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+            self.hits = self.misses = 0
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+
+CHANGE_CACHE = ChangeResponseCache(CHANGE_CACHE_SIZE)
+
+
+def _stamp(path: Path) -> tuple[int, int] | str:
+    if not path.exists():
+        return "absent"
+    stat = path.stat()
+    return (stat.st_size, stat.st_mtime_ns)
+
+
+def _digest(path: Path) -> str:
+    return sha256_file(path) if path.exists() else "absent"
+
+
+def change_cache_key(
+    data_dir: Path, build: GoldBuild, geography_id: str, year: int | None, window_kind: str
+) -> CacheKey:
+    """The identity a cached response is valid for. Call only with a `check_gold` result."""
+    gold = gold_dir(data_dir)
+    revisions_root = gold / REVISIONS_DIR
+    revisions: list[tuple[str, str, tuple[int, int] | str]] = []
+    if revisions_root.is_dir():
+        for path in revisions_root.iterdir():
+            if (path / PROOF_FILENAME).exists():
+                revisions.append(
+                    (path.name, _digest(path / PROOF_FILENAME), _stamp(path / EVENTS_FILENAME))
+                )
+    return (
+        str(data_dir.resolve()),
+        build.release_id,
+        _digest(data_dir / RELEASE_FILENAME),
+        _digest(gold / BUILD_FILENAME),
+        build.input_ledger_sha256,
+        tuple(sorted(build.config_sha256.items())),
+        _stamp(gold / DAILY_COUNTS_FILENAME),
+        _stamp(gold / COVERAGE_FILENAME),
+        _digest(Settings().findings_config),
+        tuple(sorted(revisions)),
+        geography_id,
+        year,
+        window_kind,
+    )
+
+
 # -- assembly --------------------------------------------------------------------------
 
 
@@ -771,13 +892,40 @@ def build_change(
     data_dir: Path, config_dir: Path, geography_id: str, year: int | None, window_kind: str
 ) -> ChangeResponse:
     """The Change analysis for one geography. Raises OverviewDataUnavailable for an unknown
-    or unavailable geography (the route answers 404 — never an empty, zero-looking payload)."""
+    or unavailable geography (the route answers 404 — never an empty, zero-looking payload).
+
+    Order matters: resolve the geography, prove Gold (fail closed), and only then look in the
+    cache, under the identity that proof returned."""
     geography = resolve_geography(geography_id)
     try:
-        check_gold(data_dir, config_dir)
+        build = check_gold(data_dir, config_dir)
     except GoldUnavailable as exc:
         return _unavailable(exc.condition, exc.reason)
 
+    freshness_status = crime_freshness(data_dir).status
+    key = change_cache_key(data_dir, build, geography.geography_id, year, window_kind)
+    cached = CHANGE_CACHE.get(key)
+    if cached is None:
+        response = assemble_change(data_dir, geography, year, window_kind, freshness_status)
+        CHANGE_CACHE.put(key, response)
+        return response
+    if cached.identity is None:  # window_unavailable: nothing in it moves with the clock
+        return cached
+    return cached.model_copy(
+        update={
+            "identity": cached.identity.model_copy(update={"freshness_status": freshness_status})
+        }
+    )
+
+
+def assemble_change(
+    data_dir: Path,
+    geography: ProductGeography,
+    year: int | None,
+    window_kind: str,
+    freshness_status: str,
+) -> ChangeResponse:
+    """The expensive part of `build_change`; run only after Gold has been proved."""
     release = read_release_manifest(data_dir)
     through = date.fromisoformat(str(release.data_through))
     coverage = load_coverage(data_dir)
@@ -803,7 +951,7 @@ def build_change(
             "newest published incident: the City is still adding and revising records for "
             "recent dates."
         ),
-        freshness_status=crime_freshness(data_dir).status,
+        freshness_status=freshness_status,
     )
     history_ = history(counts, coverage, window)
     revisions = revision_summary(data_dir, release.release_id, geography, counts, window)
