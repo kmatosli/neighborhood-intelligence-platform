@@ -2,14 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { WireShell } from "@/components/WireShell";
 import { QuestionHeader } from "@/components/QuestionHeader";
 import { PotholeServicePanel } from "@/components/PotholeServicePanel";
+import { ChangeSection } from "@/components/ChangeSection";
 import { useYear } from "@/lib/useYear";
 import { useGeography } from "@/lib/useGeography";
-import {
-  ComingSoonNotice,
-  PendingControl,
-  PendingControls,
-  PendingVisual,
-} from "@/components/Pending";
 
 export const Route = createFileRoute("/trends")({
   head: () => ({
@@ -18,80 +13,160 @@ export const Route = createFileRoute("/trends")({
       {
         name: "description",
         content:
-          "Is reported crime in Ward 20 getting better or worse? The crime trend views are not yet connected to validated live data. Pothole service requests from Chicago 311 are live.",
+          "How reported crime in Ward 20 has changed: every crime type, reconciled to the total, with long-run context. Geography, Circumstances and Investigations are not yet built. Pothole service requests from Chicago 311 are live.",
       },
     ],
   }),
   component: Trends,
 });
 
+/**
+ * Crime Trends in the five approved sections. Only Change is built; the others say so in one
+ * sentence and show no controls and no placeholder charts, because a disabled widget implies an
+ * analysis that does not exist. Geography and year come from the shared shell (`?geo=`,
+ * `?year=`), never from a page-local control.
+ */
 function Trends() {
+  const { year, isLoading: yearLoading } = useYear();
+  const { geographyId, isLoading: geoLoading } = useGeography();
+  const ready = !yearLoading && !geoLoading && year !== null && geographyId !== null;
+
   return (
     <WireShell>
-      <section className="mb-6">
-        <QuestionHeader question="Is it getting better or worse?">
-          <ComingSoonNotice>
-            The crime trend views on this page are not yet connected to validated live data. Their
-            layouts show what they will contain. No trend, figure, or comparison is shown until the
-            data supports one. The City Services section further down is live.
-          </ComingSoonNotice>
-
-          {/* No direction is stated. Answering this question needs several enriched years, and
-              "rising" or "falling" would be invented until the trend method is built and
-              validated against them. */}
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Answering this question requires several years of geography-enriched data and a
-            validated trend method. Until then, this page says nothing about direction — an
-            unsupported claim about whether a neighborhood is getting safer is not a harmless
-            placeholder.
-          </p>
-        </QuestionHeader>
-      </section>
-
-      {/* Controls — kept in place, disabled until they filter real data. */}
-      <PendingControls label="Trend controls" columns="sm:grid-cols-5">
-        {/* Geography will come from the shared selector (Ward 20 overall or an area within
-            it), the same context the Overview uses — not a page-local list. */}
-        <PendingControl label="Geography" options={["Ward 20 overall", "Area within Ward 20"]} />
-        <PendingControl
-          label="Crime group"
-          options={["All", "Violent", "Property", "Quality of life"]}
-        />
-        <PendingControl
-          label="Period"
-          options={["Last 12 months", "Last 5 years", "Last 10 years"]}
-        />
-        <PendingControl label="Show" options={["Counts", "Rate per 1,000"]} />
-        <PendingControl label="Compare with" options={["Prior year", "5-year baseline"]} />
-      </PendingControls>
-
-      {/* Primary view */}
-      <section aria-labelledby="line" className="mb-8">
-        <h2 id="line" className="font-serif text-xl">
-          Reported incidents, monthly
-        </h2>
-        <PendingVisual
-          height={260}
-          planned="One line of monthly reported incidents, with a shaded band showing the five-year range for the same month."
+      <section className="mb-8">
+        <QuestionHeader
+          question="Is it getting better or worse?"
+          lede="Reported crime only. These pages describe what the records show; they do not say why a number moved, and a count is not a safety ranking."
         />
       </section>
 
-      {/* City Services — the first connected section on this page. Crime trends above are
-          still placeholders; this one is live, so it is labelled as such rather than sitting
-          among them unmarked. */}
+      {ready ? (
+        <ChangeSection geographyId={geographyId} year={year} />
+      ) : (
+        <p className="mb-12 text-base text-muted-foreground">Loading…</p>
+      )}
+
+      <NotYetBuilt
+        id="geography"
+        number={2}
+        title="Geography"
+        sentence="Where incidents concentrate within the selected area and whether that concentration persists is not yet built."
+      />
+      <NotYetBuilt
+        id="circumstances"
+        number={3}
+        title="Circumstances"
+        sentence="When and in what settings incidents are reported — time of day, day of week, location type — is not yet built."
+      />
+      <NotYetBuilt
+        id="investigations"
+        number={4}
+        title="Investigations"
+        sentence="Focused studies of particular crime types are not yet built."
+      />
+
+      <MethodsSection />
+
+      {/* City Services — a separate, live dataset. Unchanged by the crime sections above. */}
       <CityServicesSection />
-
-      {/* Category change */}
-      <section aria-labelledby="cats">
-        <h2 id="cats" className="font-serif text-xl">
-          Category change vs prior year
-        </h2>
-        <PendingVisual
-          height={220}
-          planned="Absolute change in reports per category, as horizontal bars. The count will lead, because small categories look extreme in percentage terms."
-        />
-      </section>
     </WireShell>
+  );
+}
+
+function NotYetBuilt({
+  id,
+  number,
+  title,
+  sentence,
+}: {
+  id: string;
+  number: number;
+  title: string;
+  sentence: string;
+}) {
+  return (
+    <section aria-labelledby={id} className="mb-8">
+      <p className="wire-label mb-1">Section {number}</p>
+      <h2 id={id} className="font-serif text-2xl">
+        {title}
+      </h2>
+      <p className="mt-1 max-w-2xl text-base text-muted-foreground">{sentence}</p>
+    </section>
+  );
+}
+
+/** Methods for what is built today. Static text: no figure here, so none can drift. */
+function MethodsSection() {
+  return (
+    <section aria-labelledby="methods" className="mb-12">
+      <p className="wire-label mb-1">Section 5</p>
+      <h2 id="methods" className="font-serif text-2xl">
+        Definitions &amp; Methods
+      </h2>
+      <dl className="mt-3 max-w-3xl space-y-3 text-base">
+        <div>
+          <dt className="font-medium">What is counted</dt>
+          <dd className="text-muted-foreground">
+            Incidents reported to the Chicago Police Department and published in the City&apos;s
+            Crimes dataset — not convictions, and not every crime. Records the City has since
+            withdrawn are kept for the record but excluded from every figure.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Where an incident is placed</dt>
+          <dd className="text-muted-foreground">
+            By the incident&apos;s mapped location against the current (2023) Ward 20 boundary and
+            the community-area boundaries — never by the ward or area the record reports. Every year
+            is placed with the same map. An area figure is only the part of that community area
+            inside Ward 20.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Comparisons</dt>
+          <dd className="text-muted-foreground">
+            Both periods cover the same calendar span, with inclusive start and end dates, and both
+            lie wholly inside the published data; a part-year is never compared with a full year. A
+            percentage is withheld when its comparison count is too small to be stable, and the
+            counts are always shown.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Groups and overlays</dt>
+          <dd className="text-muted-foreground">
+            The broad groups divide every report into exactly one group. Overlays —
+            enforcement-generated offences, narcotics, motor vehicle theft, and selected FBI/NIBRS
+            violent-offense classes — are separate lenses that overlap each other and the groups, so
+            they are never added up or drawn as parts of a whole. The violent overlay follows the
+            source&apos;s own FBI/NIBRS code and is a plain subset, not a severity or safety
+            measure.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Recent and revised data</dt>
+          <dd className="text-muted-foreground">
+            The City withholds roughly the latest week and keeps revising records. A period ending
+            within 60 days of the newest record is marked provisional. The source has no separate
+            report date, so revisions are measured by comparing retained data releases incident by
+            incident.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Direction over time</dt>
+          <dd className="text-muted-foreground">
+            Kendall&apos;s tau-b on complete calendar years. It describes whether totals tended to
+            rise or fall; it is not a forecast and does not explain a change.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Near-repeat patterns</dt>
+          <dd className="text-muted-foreground">
+            Published locations are masked to the block, so the true distance between incidents
+            cannot be measured. Near-repeat analysis is therefore kept as a research note, not a
+            public view.
+          </dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
