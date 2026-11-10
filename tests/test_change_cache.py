@@ -15,7 +15,13 @@ from crime_release_fixtures import CONFIG_DIR, write_root
 from fastapi.testclient import TestClient
 from test_crime_change import _mix_rows, _monthly_rows
 
-from bw_observatory.gold.crime_aggregates import BUILD_FILENAME, build_crime_gold, gold_dir
+from bw_observatory.gold.crime_aggregates import (
+    BUILD_FILENAME,
+    COVERAGE_FILENAME,
+    DAILY_COUNTS_FILENAME,
+    build_crime_gold,
+    gold_dir,
+)
 from bw_observatory.gold.revisions import PROOF_FILENAME, REVISIONS_DIR
 from bw_observatory.ingest.freshness import Freshness
 from bw_observatory.presentation import change
@@ -204,12 +210,25 @@ def test_failed_gold_never_returns_the_cached_success(root: Path, spy: Spy) -> N
     assert CHANGE_CACHE.hits == 0
 
 
-def test_missing_gold_never_returns_the_cached_success(root: Path, spy: Spy) -> None:
-    assert _ward(root).analysis_status == "ok"
-    (gold_dir(root) / BUILD_FILENAME).unlink()
-    response = _ward(root)
-    assert response.analysis_status == "aggregates_unavailable" and response.identity is None
-    assert CHANGE_CACHE.hits == 0
+@pytest.mark.parametrize("missing", [BUILD_FILENAME, DAILY_COUNTS_FILENAME, COVERAGE_FILENAME])
+def test_missing_gold_never_returns_the_cached_success(
+    root: Path, spy: Spy, missing: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bw_observatory.api.app import app
+
+    monkeypatch.setenv("BW_DATA_DIR", str(root))
+    client = TestClient(app, raise_server_exceptions=False)
+    url = "/api/v1/trends/ward20/change"
+    assert client.get(url, params={"year": 2026}).json()["analysis_status"] == "ok"
+    (gold_dir(root) / missing).unlink()
+    response = client.get(url, params={"year": 2026})
+    assert response.status_code == 200  # an answer, not a 500
+    payload = response.json()
+    assert payload["analysis_status"] == "aggregates_unavailable"
+    for key in ("identity", "window", "decomposition", "composition", "history", "sensitivity"):
+        assert payload[key] is None
+    assert payload["trend"] == [] and payload["revisions"] is None
+    assert spy.checks == 2 and spy.assemblies == 1 and CHANGE_CACHE.hits == 0
 
 
 def test_freshness_is_read_live_on_a_cache_hit(

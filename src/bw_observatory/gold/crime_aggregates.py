@@ -405,6 +405,11 @@ def check_gold(data_dir: Path, config_dir: Path) -> GoldBuild:
     build = read_build(data_dir)
     if build.status != BUILD_PASS:
         raise GoldUnavailable(STALE, "The last Gold build did not pass its reconciliation.")
+    # A passing build record without the tables it vouches for cannot be served. Existence
+    # only (a stat, not a read): this runs on every request, ahead of the Change response cache.
+    for required in (DAILY_COUNTS_FILENAME, COVERAGE_FILENAME):
+        if not (gold_dir(data_dir) / required).is_file():
+            raise GoldUnavailable(UNAVAILABLE, f"Gold crime aggregates are missing {required}.")
     if build.release_id != release.release_id:
         raise GoldUnavailable(
             STALE, f"Gold was built for {build.release_id}, not {release.release_id}."
