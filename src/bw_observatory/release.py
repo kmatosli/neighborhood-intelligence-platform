@@ -164,6 +164,21 @@ def validate_release_directory(data_dir: Path, release_id: str) -> None:
         )
 
 
+def check_serving_status(manifest: ReleaseManifest, production: bool) -> None:
+    """A production process serves only `status: release` roots.
+
+    A development manifest stays valid everywhere else (local work, tests, scratch analysis of
+    retained releases, tooling). This is a serving rule, not a validity rule, so it is applied
+    where figures are about to be served (`check_gold`), never when a manifest is read or
+    built. Nothing is promoted or rewritten.
+    """
+    if production and manifest.status != STATUS_RELEASE:
+        raise ReleaseManifestError(
+            f"{manifest.release_id} is a {manifest.status} release; a production process "
+            f"serves only status {STATUS_RELEASE!r} releases."
+        )
+
+
 def builder_commit(repo_root: Path | None = None) -> str:
     """The code version that cut the release; `unknown` outside a git checkout."""
     try:

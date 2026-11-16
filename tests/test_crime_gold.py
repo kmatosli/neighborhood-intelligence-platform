@@ -145,6 +145,64 @@ def test_a_root_not_named_like_a_public_release_is_not_rejected_for_its_name(
     assert verify_release_manifest(root, CONFIG_DIR) == []
 
 
+SERVING_REFUSAL = "a production process serves only status 'release' releases"
+
+
+def test_a_development_release_is_served_outside_production(root: Path) -> None:
+    build_crime_gold(root, CONFIG_DIR)
+    assert read_release_manifest(root).status == "development"
+    assert check_gold(root, CONFIG_DIR).release_id == "dev-test"
+
+
+@pytest.mark.parametrize("variable", ["BW_PRODUCTION", "RENDER"])
+def test_a_production_process_refuses_a_development_release(
+    root: Path, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    build_crime_gold(root, CONFIG_DIR)
+    monkeypatch.setenv(variable, "true")
+    with pytest.raises(GoldUnavailable) as refused:
+        check_gold(root, CONFIG_DIR)
+    assert refused.value.condition == UNAVAILABLE and SERVING_REFUSAL in refused.value.reason
+    # A serving rule, not a validity rule: the manifest still reads and verifies, tooling can
+    # still build Gold for it, and nothing was promoted or rewritten.
+    assert read_release_manifest(root).status == "development"
+    assert verify_release_manifest(root, CONFIG_DIR) == []
+    assert build_crime_gold(root, CONFIG_DIR).status == "PASS"
+
+
+def test_an_explicit_non_production_setting_overrides_the_platform_default(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build_crime_gold(root, CONFIG_DIR)
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv("BW_PRODUCTION", "false")
+    assert check_gold(root, CONFIG_DIR).release_id == "dev-test"
+
+
+def test_a_production_process_serves_a_public_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = write_root(
+        tmp_path / "bw-release-20260921",
+        _rows(),
+        release_id="bw-release-20260921",
+        status=STATUS_RELEASE,
+    )
+    build_crime_gold(root, CONFIG_DIR)
+    monkeypatch.setenv("RENDER", "true")
+    assert check_gold(root, CONFIG_DIR).release_id == "bw-release-20260921"
+
+
+def test_a_production_process_still_refuses_a_misplaced_public_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _misplaced(tmp_path)
+    monkeypatch.setenv("RENDER", "true")
+    with pytest.raises(GoldUnavailable) as refused:
+        check_gold(root, CONFIG_DIR)
+    assert "contradicts its release.json release_id" in refused.value.reason
+
+
 def test_release_verification_catches_a_changed_silver_partition(root: Path) -> None:
     silver = root / "silver" / "crime" / "crime_with_geography" / "2025.parquet"
     frame = pd.read_parquet(silver)

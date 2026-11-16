@@ -38,6 +38,7 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
+from bw_observatory.config import Settings
 from bw_observatory.geography.models import SourceStatus
 from bw_observatory.presentation.geography import (
     GEOGRAPHY_COLUMNS,
@@ -57,6 +58,7 @@ from bw_observatory.presentation.overview import (
 from bw_observatory.release import (
     FIRST_CRIME_YEAR,
     ReleaseManifestError,
+    check_serving_status,
     config_digests,
     crime_year_problems,
     expected_crime_years,
@@ -400,6 +402,7 @@ def check_gold(data_dir: Path, config_dir: Path) -> GoldBuild:
     """
     try:
         release = read_release_manifest(data_dir)
+        check_serving_status(release, Settings().production)
     except ReleaseManifestError as exc:
         raise GoldUnavailable(UNAVAILABLE, str(exc)) from exc
     build = read_build(data_dir)

@@ -302,3 +302,30 @@ def test_a_misplaced_public_release_serves_no_figures_even_after_a_cached_succes
     for key in ("identity", "window", "decomposition", "composition", "history", "sensitivity"):
         assert payload[key] is None
     assert spy.checks == 2 and spy.assemblies == 1 and CHANGE_CACHE.hits == 0
+
+
+def test_a_cached_development_success_is_not_served_by_a_production_process(
+    tmp_path: Path, spy: Spy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bw_observatory.api.app import app
+
+    local = write_root(tmp_path / "local", [*_monthly_rows(), *_mix_rows()], release_id="dev-local")
+    build_crime_gold(local, CONFIG_DIR)
+    monkeypatch.setenv("BW_DATA_DIR", str(local))
+    client = TestClient(app, raise_server_exceptions=False)
+    url, params = "/api/v1/trends/ward20/change", {"year": 2026}
+
+    # Permitted: a non-production process serves the development release, and caches it.
+    assert client.get(url, params=params).json()["analysis_status"] == "ok"
+    assert len(CHANGE_CACHE) == 1
+
+    # The same request from a production process is refused before the cache is read.
+    monkeypatch.setenv("RENDER", "true")
+    response = client.get(url, params=params)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["analysis_status"] == "aggregates_unavailable"
+    assert "production process serves only status 'release'" in payload["unavailable_reason"]
+    for key in ("identity", "window", "decomposition", "composition", "history", "sensitivity"):
+        assert payload[key] is None
+    assert spy.checks == 2 and spy.assemblies == 1 and CHANGE_CACHE.hits == 0

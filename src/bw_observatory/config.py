@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     )
     log_level: str = "INFO"
 
+    # True when this process serves the public. Render sets `RENDER=true` on every service,
+    # so the deployed API is production with no extra configuration; `BW_PRODUCTION` (read
+    # first) states it explicitly anywhere else. Local work, tests and scratch analysis are
+    # not production. It decides only what may be served (release.check_serving_status).
+    production: bool = Field(
+        default=False, validation_alias=AliasChoices("BW_PRODUCTION", "RENDER")
+    )
+
     # In-process daily crime refresh (bw_observatory.ops.scheduler). Off unless a time is
     # set; "16:30" means 16:30 UTC every day. Reconciliation runs after the refresh on this
     # day of the month. A run that exceeds the timeout is killed and logged as failed.
