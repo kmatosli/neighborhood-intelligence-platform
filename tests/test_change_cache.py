@@ -36,6 +36,7 @@ from bw_observatory.presentation.change import (
 from bw_observatory.presentation.models import ChangeResponse
 from bw_observatory.release import (
     STATUS_DEVELOPMENT,
+    STATUS_RELEASE,
     build_release_manifest,
     write_release_manifest,
 )
@@ -268,3 +269,36 @@ def test_the_endpoint_serves_a_repeat_from_the_cache(
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
     assert (spy.checks, spy.assemblies, CHANGE_CACHE.hits) == (2, 1, 1)
+
+
+def test_a_misplaced_public_release_serves_no_figures_even_after_a_cached_success(
+    tmp_path: Path, spy: Spy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A sound 2026-07-26 release is served from a neutral staging root, then the same tree
+    # appears as `bw-release-20260921` (extracted into the wrong folder): the directory now
+    # contradicts release.json, and the success cached under the old root must not leak out.
+    from bw_observatory.api.app import app
+
+    staged = write_root(
+        tmp_path / "staging",
+        [*_monthly_rows(), *_mix_rows()],
+        release_id="bw-release-20260726",
+        status=STATUS_RELEASE,
+    )
+    build_crime_gold(staged, CONFIG_DIR)
+    client = TestClient(app, raise_server_exceptions=False)
+    url, params = "/api/v1/trends/ward20/change", {"year": 2026}
+
+    monkeypatch.setenv("BW_DATA_DIR", str(staged))
+    assert client.get(url, params=params).json()["analysis_status"] == "ok"
+
+    misplaced = staged.rename(tmp_path / "bw-release-20260921")
+    monkeypatch.setenv("BW_DATA_DIR", str(misplaced))
+    response = client.get(url, params=params)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["analysis_status"] == "aggregates_unavailable"
+    assert "contradicts its release.json release_id" in payload["unavailable_reason"]
+    for key in ("identity", "window", "decomposition", "composition", "history", "sensitivity"):
+        assert payload[key] is None
+    assert spy.checks == 2 and spy.assemblies == 1 and CHANGE_CACHE.hits == 0

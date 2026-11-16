@@ -87,6 +87,64 @@ def test_release_ids_must_say_what_they_are(root: Path) -> None:
     assert build_release_manifest(root, CONFIG_DIR, "bw-release-20261028", STATUS_RELEASE)
 
 
+def _misplaced(tmp_path: Path) -> Path:
+    """A sound 2026-07-26 release (with PASSing Gold) sitting in a 2026-09-21 directory."""
+    staged = write_root(
+        tmp_path / "staging", _rows(), release_id="bw-release-20260726", status=STATUS_RELEASE
+    )
+    build_crime_gold(staged, CONFIG_DIR)
+    return staged.rename(tmp_path / "bw-release-20260921")
+
+
+def test_a_public_release_directory_matching_its_release_id_passes(tmp_path: Path) -> None:
+    root = write_root(
+        tmp_path / "bw-release-20260921",
+        _rows(),
+        release_id="bw-release-20260921",
+        status=STATUS_RELEASE,
+    )
+    assert read_release_manifest(root).release_id == "bw-release-20260921"
+    assert verify_release_manifest(root, CONFIG_DIR) == []
+    build_crime_gold(root, CONFIG_DIR)
+    assert check_gold(root, CONFIG_DIR).release_id == "bw-release-20260921"
+
+
+def test_a_public_release_directory_contradicting_its_release_id_fails(tmp_path: Path) -> None:
+    root = _misplaced(tmp_path)
+    contradiction = "'bw-release-20260921' contradicts its release.json release_id"
+    with pytest.raises(ReleaseManifestError, match=contradiction):
+        read_release_manifest(root)
+    assert any(contradiction in p for p in verify_release_manifest(root, CONFIG_DIR))
+    with pytest.raises(GoldUnavailable) as refused:
+        check_gold(root, CONFIG_DIR)  # Gold itself PASSed; the root it sits in is the lie
+    assert refused.value.condition == UNAVAILABLE and contradiction in refused.value.reason
+    with pytest.raises(GoldBuildError, match=contradiction):
+        build_crime_gold(root, CONFIG_DIR)
+    # Nor can a contradictory manifest be written there; nothing is renamed or rewritten.
+    with pytest.raises(ReleaseManifestError, match=contradiction):
+        build_release_manifest(root, CONFIG_DIR, "bw-release-20260726", STATUS_RELEASE)
+    assert root.name == "bw-release-20260921"
+    assert json.loads((root / "release.json").read_text("utf-8"))["release_id"] == (
+        "bw-release-20260726"
+    )
+
+
+@pytest.mark.parametrize(
+    ("directory", "release_id", "status"),
+    [
+        ("release", "dev-test", "development"),  # a test root
+        ("candidate-2026-11", "bw-release-20261115", STATUS_RELEASE),  # a staging root
+        ("tmp8x2k_scratch", "bw-release-20260921", STATUS_RELEASE),  # a scratch extraction
+    ],
+)
+def test_a_root_not_named_like_a_public_release_is_not_rejected_for_its_name(
+    tmp_path: Path, directory: str, release_id: str, status: str
+) -> None:
+    root = write_root(tmp_path / directory, _rows(), release_id=release_id, status=status)
+    assert read_release_manifest(root).release_id == release_id
+    assert verify_release_manifest(root, CONFIG_DIR) == []
+
+
 def test_release_verification_catches_a_changed_silver_partition(root: Path) -> None:
     silver = root / "silver" / "crime" / "crime_with_geography" / "2025.parquet"
     frame = pd.read_parquet(silver)

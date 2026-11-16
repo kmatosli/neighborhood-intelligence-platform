@@ -148,6 +148,22 @@ def validate_release_id(release_id: str, status: str) -> None:
         )
 
 
+def validate_release_directory(data_dir: Path, release_id: str) -> None:
+    """A root named like a public release must be the release its `release.json` names.
+
+    `release.json` is the identity; the directory name never supplies one. But a directory
+    called `bw-release-YYYYMMDD` is a claim, and a manifest naming a different release (an
+    archive extracted into the wrong folder, a manifest copied across) must not be served under
+    it. The path is resolved first, so `/var/data/current` is judged by the release it points
+    at. Any other name (a scratch, test or candidate root) is not a claim and is not checked.
+    """
+    name = data_dir.resolve().name
+    if _RELEASE_ID.match(name) and name != release_id:
+        raise ReleaseManifestError(
+            f"Release directory {name!r} contradicts its release.json release_id {release_id!r}."
+        )
+
+
 def builder_commit(repo_root: Path | None = None) -> str:
     """The code version that cut the release; `unknown` outside a git checkout."""
     try:
@@ -200,6 +216,7 @@ def build_release_manifest(
 ) -> ReleaseManifest:
     """Describe `data_dir` completely. Reads every Silver partition once (build time only)."""
     validate_release_id(release_id, status)
+    validate_release_directory(data_dir, release_id)
     manifest_path = data_dir / BRONZE_CRIME / "manifest.parquet"
     if not manifest_path.exists():
         raise ReleaseManifestError(f"No Bronze crime manifest under {data_dir}.")
@@ -245,6 +262,7 @@ def read_release_manifest(data_dir: Path) -> ReleaseManifest:
     except (ValueError, TypeError) as exc:
         raise ReleaseManifestError(f"{path} is not a valid release manifest: {exc}") from exc
     validate_release_id(manifest.release_id, manifest.status)
+    validate_release_directory(data_dir, manifest.release_id)
     return manifest
 
 
