@@ -456,3 +456,201 @@ def test_revision_build_refuses_two_roots_with_one_identity(tmp_path: Path) -> N
     current = write_root(tmp_path / "c", _current_rows(), release_id="dev-same")
     with pytest.raises(RevisionBuildError):
         build_revision_events(prior, current)
+
+
+# -- revision reason semantics -----------------------------------------------------------
+
+
+def test_revision_reasons_follow_the_current_source_view(tmp_path: Path) -> None:
+    from bw_observatory.gold.revisions import _in_geography, _states, _ward, _ward_ids
+
+    withdrawn = {"source_status": "source_removed"}
+    prior_root = write_root(
+        tmp_path / "p",
+        [
+            row("s1", "2025-01-05", "THEFT"),  # unchanged: no row
+            row("a1", "2025-01-06", "THEFT"),  # active → source_removed
+            row("a2", "2025-01-07", "THEFT"),  # active → absent
+            row("r1", "2025-01-08", "THEFT", **withdrawn),  # source_removed → active
+            row("g1", "2025-01-09", "THEFT", **withdrawn),  # source_removed → absent
+            row("mt", "2025-01-12", "THEFT"),  # type + date + geography all change
+        ],
+        release_id="dev-prior",
+    )
+    current_root = write_root(
+        tmp_path / "c",
+        [
+            row("s1", "2025-01-05", "THEFT"),
+            row("a1", "2025-01-06", "THEFT", **withdrawn),
+            row("r1", "2025-01-08", "THEFT"),
+            row("mt", "2025-03-03", "BURGLARY", fbi_code="05", spatial_ca="68"),
+            row("n1", "2025-01-10", "THEFT"),  # absent → active
+        ],
+        release_id="dev-current",
+    )
+    proof = build_revision_events(prior_root, current_root)
+    assert proof.status == "PASS"  # the cell invariant held, or nothing was published
+    found = latest_revision(current_root, "dev-current")
+    assert found is not None
+    events = found[1]
+
+    # One changed incident, one row - including the record that stopped being published
+    # after it had already left the analytical view.
+    assert sorted(events["id"]) == ["a1", "a2", "g1", "mt", "n1", "r1"]
+    assert events["id"].is_unique
+    flags = events.set_index("id")[REASONS]
+    reasons = {i: sorted(r for r in REASONS if flags.loc[i, r]) for i in flags.index}
+    assert reasons == {
+        "a1": ["removed"],
+        "a2": ["removed"],
+        "r1": ["restored"],
+        "g1": [],  # not a second removal
+        "n1": ["added"],
+        "mt": ["date_changed", "geography_changed", "reclassified"],
+    }
+    g1 = events.set_index("id").loc["g1"]
+    assert g1["exists_prior"] and not g1["exists_current"]
+    assert g1["old_source_status"] == "source_removed"
+    # Reason flags are not additive: mt carries three and g1 none, so their sum is no count.
+    assert int(flags.to_numpy().sum()) == 7 and len(events) == 6
+
+    # Flow comes from cell membership, never from reasons: g1 enters and leaves nothing.
+    geographies = built_geographies()
+    ward = _ward(geographies)
+    g1_row = events[events["id"] == "g1"]
+    assert not _in_geography(g1_row, "old_", ward).any()
+    assert not _in_geography(g1_row, "new_", ward).any()
+    ids = _ward_ids(prior_root, ward) | _ward_ids(current_root, ward)
+    prior, current = _states(prior_root, ids), _states(current_root, ids)
+    assert check_cell_invariant(prior, current, events, geographies)[1] == []
+
+
+# -- revision ordering -------------------------------------------------------------------
+
+
+def _comparisons(pair: tuple[Path, Path], specs: list[tuple[str, str | None, str, str]]) -> Path:
+    """Real events from one build, filed as several comparisons into `dev-current`.
+
+    Each spec is (prior id, prior cut_at or None for a legacy proof, status, current id).
+    The original comparison is removed so only the specs compete.
+    """
+    import shutil
+
+    from bw_observatory.gold.revisions import EVENTS_FILENAME, PROOF_FILENAME, REVISIONS_DIR
+
+    prior, current = pair
+    build_revision_events(prior, current)
+    folder = gold_dir(current) / REVISIONS_DIR
+    source = folder / "dev-prior__dev-current"
+    for prior_id, cut_at, status, current_id in specs:
+        target = folder / f"{prior_id}__{current_id}"
+        target.mkdir()
+        shutil.copyfile(source / EVENTS_FILENAME, target / EVENTS_FILENAME)
+        proof = json.loads((source / PROOF_FILENAME).read_text("utf-8"))
+        proof.update(prior_release_id=prior_id, status=status, current_release_id=current_id)
+        if cut_at is None:
+            del proof["prior_cut_at"]
+        else:
+            proof["prior_cut_at"] = cut_at
+        (target / PROOF_FILENAME).write_text(json.dumps(proof), "utf-8")
+    shutil.rmtree(source)
+    return current
+
+
+def _chosen(current: Path) -> str | None:
+    found = latest_revision(current, "dev-current")
+    return None if found is None else found[0].prior_release_id
+
+
+def test_a_revision_proof_records_both_release_cuts(pair: tuple[Path, Path]) -> None:
+    prior, current = pair
+    proof = build_revision_events(prior, current)
+    assert proof.prior_cut_at == read_release_manifest(prior).cut_at
+    assert proof.current_cut_at == read_release_manifest(current).cut_at
+
+
+def test_the_latest_revision_is_the_most_recently_cut_prior_release(
+    pair: tuple[Path, Path],
+) -> None:
+    current = _comparisons(
+        pair,
+        [
+            ("bw-release-20260726", "2026-07-26T00:00:00+00:00", "PASS", "dev-current"),
+            ("bw-release-20260921", "2026-09-21T00:00:00+00:00", "PASS", "dev-current"),
+        ],
+    )
+    assert _chosen(current) == "bw-release-20260921"
+
+
+@pytest.mark.parametrize(
+    ("dev_cut", "expected"),
+    [
+        # `dev-zzz` sorts after every `bw-release-*` id but was cut earlier: it loses.
+        ("2026-01-01T00:00:00+00:00", "bw-release-20260921"),
+        # And a development release cut later wins on chronology, not on its name.
+        ("2026-10-01T00:00:00+00:00", "dev-zzz"),
+    ],
+)
+def test_string_order_never_decides_which_revision_is_latest(
+    pair: tuple[Path, Path], dev_cut: str, expected: str
+) -> None:
+    current = _comparisons(
+        pair,
+        [
+            ("bw-release-20260921", "2026-09-21T00:00:00+00:00", "PASS", "dev-current"),
+            ("dev-zzz", dev_cut, "PASS", "dev-current"),
+        ],
+    )
+    assert _chosen(current) == expected
+
+
+def test_legacy_proofs_use_a_public_id_date_and_never_guess_a_development_one(
+    pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    # A legacy public proof (no prior_cut_at) is dated by its id, and beats a newer-format
+    # proof cut earlier. A legacy dev proof has no chronology and is not eligible at all.
+    current = _comparisons(
+        pair,
+        [
+            ("bw-release-20260921", None, "PASS", "dev-current"),
+            ("bw-release-20260726", "2026-08-01T00:00:00+00:00", "PASS", "dev-current"),
+            ("dev-zzz", None, "PASS", "dev-current"),
+        ],
+    )
+    assert _chosen(current) == "bw-release-20260921"
+    assert _chosen(current) == "bw-release-20260921"  # deterministic
+
+    prior2 = write_root(tmp_path / "p2", _prior_rows(), release_id="dev-prior")
+    current2 = write_root(tmp_path / "c2", _current_rows(), release_id="dev-current")
+    only_dev = _comparisons((prior2, current2), [("dev-zzz", None, "PASS", "dev-current")])
+    assert _chosen(only_dev) is None  # excluded, not chosen by string order
+
+
+def test_only_passing_comparisons_into_this_release_are_eligible(pair: tuple[Path, Path]) -> None:
+    current = _comparisons(
+        pair,
+        [
+            ("bw-release-20260726", "2026-07-26T00:00:00+00:00", "PASS", "dev-current"),
+            ("bw-release-20260921", "2026-09-21T00:00:00+00:00", "FAIL", "dev-current"),
+            ("bw-release-20261001", "2026-10-01T00:00:00+00:00", "PASS", "dev-elsewhere"),
+        ],
+    )
+    assert _chosen(current) == "bw-release-20260726"
+
+
+def test_the_chosen_comparison_carries_the_same_events(pair: tuple[Path, Path]) -> None:
+    prior, current = pair
+    build_revision_events(prior, current)
+    found = latest_revision(current, "dev-current")
+    assert found is not None
+    built = found[1]
+    chosen = _comparisons(
+        pair,
+        [
+            ("bw-release-20260726", "2026-07-26T00:00:00+00:00", "PASS", "dev-current"),
+            ("bw-release-20260921", "2026-09-21T00:00:00+00:00", "PASS", "dev-current"),
+        ],
+    )
+    selected = latest_revision(chosen, "dev-current")
+    assert selected is not None
+    pd.testing.assert_frame_equal(selected[1], built)

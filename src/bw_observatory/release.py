@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +135,20 @@ def config_digests(config_dir: Path) -> dict[str, str]:
         name: sha256_file(config_dir / name) if (config_dir / name).exists() else "absent"
         for name in CONFIG_FILES
     }
+
+
+def public_release_date(release_id: str) -> date | None:
+    """The date a public id states (`bw-release-YYYYMMDD`); None for any other id.
+
+    Only for records that predate `cut_at` being carried along: identity still comes from
+    `release.json`, and a `dev-*` id states no date at all.
+    """
+    if not _RELEASE_ID.match(release_id):
+        return None
+    try:
+        return datetime.strptime(release_id[-8:], "%Y%m%d").replace(tzinfo=UTC).date()
+    except ValueError:
+        return None
 
 
 def validate_release_id(release_id: str, status: str) -> None:

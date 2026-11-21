@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +48,11 @@ from bw_observatory.presentation.geography import (
     geography_mask,
 )
 from bw_observatory.presentation.overview import SOURCE_STATUS_COLUMN, bronze_path, silver_path
-from bw_observatory.release import ReleaseManifestError, read_release_manifest
+from bw_observatory.release import (
+    ReleaseManifestError,
+    public_release_date,
+    read_release_manifest,
+)
 
 REVISIONS_DIR = "revisions"
 EVENTS_FILENAME = "events.parquet"
@@ -93,6 +97,10 @@ class RevisionProof:
     cells_checked: int
     failures: list[str] = field(default_factory=list)
     status: str = BUILD_FAIL
+    # The two manifests' `cut_at`: the chronology `latest_revision` orders by. Absent from
+    # proofs built before they were recorded (see `_prior_chronology` for those).
+    prior_cut_at: str | None = None
+    current_cut_at: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -204,8 +212,14 @@ def build_events(prior: pd.DataFrame, current: pd.DataFrame) -> pd.DataFrame:
     both = merged["exists_prior"] & merged["exists_current"]
 
     merged["added"] = ~merged["exists_prior"] & merged["exists_current"]
-    merged["removed"] = merged["exists_prior"] & (
-        ~merged["exists_current"] | (removed_new.fillna(False) & ~removed_old.fillna(False))
+    # `removed` means the incident left the current-source view in this release: it was
+    # counted in the prior release and is withdrawn or gone now. A record that was already
+    # `source_removed` in the prior release and is now not published at all left the view
+    # earlier, so it is not removed again (it still keeps its row; see `changed` below).
+    merged["removed"] = (
+        merged["exists_prior"]
+        & ~removed_old.fillna(False)
+        & (~merged["exists_current"] | removed_new.fillna(False))
     )
     merged["restored"] = both & removed_old.fillna(False) & ~removed_new.fillna(False)
     merged["reclassified"] = both & (
@@ -220,7 +234,11 @@ def build_events(prior: pd.DataFrame, current: pd.DataFrame) -> pd.DataFrame:
     merged["arrest_changed"] = both & _differs(merged["old_arrest"], merged["new_arrest"])
     merged["domestic_changed"] = both & _differs(merged["old_domestic"], merged["new_domestic"])
 
-    changed = merged[REASONS].any(axis=1)
+    # An id published in one release and not the other always differs, reason or not: a
+    # withdrawn record that the source has since stopped publishing is one event row with
+    # no reason flag (exists_prior True, exists_current False, old_source_status
+    # source_removed). Reasons explain; they do not decide what changed.
+    changed = merged[REASONS].any(axis=1) | (merged["exists_prior"] != merged["exists_current"])
     columns = ["id", "exists_prior", "exists_current"]
     for attribute in _ATTRIBUTES:
         columns += [f"old_{attribute}", f"new_{attribute}"]
@@ -303,6 +321,8 @@ def build_revision_events(prior_root: Path, current_root: Path) -> RevisionProof
         events=len(events),
         ids_compared=len(ids),
         cells_checked=0,
+        prior_cut_at=prior_release.cut_at,
+        current_cut_at=current_release.cut_at,
     )
     proof.cells_checked, proof.failures = check_cell_invariant(prior, current, events, geographies)
 
@@ -321,24 +341,52 @@ def build_revision_events(prior_root: Path, current_root: Path) -> RevisionProof
     return proof
 
 
+def _prior_chronology(proof: dict[str, Any]) -> datetime | None:
+    """When the prior release of a comparison was cut, or None when that cannot be known.
+
+    A proof records the prior manifest's `cut_at`. A proof built before that field existed
+    falls back to the date a public id states (`bw-release-YYYYMMDD`, midnight UTC). A legacy
+    proof whose prior is any other id (`dev-*`) has no chronology and is never guessed at.
+    """
+    cut_at = proof.get("prior_cut_at")
+    if cut_at is not None:
+        try:
+            moment = datetime.fromisoformat(str(cut_at))
+        except ValueError:
+            return None
+        return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    stated = public_release_date(str(proof.get("prior_release_id", "")))
+    return None if stated is None else datetime.combine(stated, time.min, tzinfo=UTC)
+
+
 def latest_revision(
     current_root: Path, current_id: str
 ) -> tuple[RevisionProof, pd.DataFrame] | None:
-    """The newest PASSing comparison into this release, or None when none was built."""
+    """The PASSing comparison into this release whose prior release was cut most recently,
+    or None when there is none.
+
+    Chronology is the prior manifest's `cut_at`, never the order of the ids as strings (a
+    `dev-*` id would otherwise outrank every `bw-release-*`). A comparison with no defensible
+    chronology (see `_prior_chronology`) is not eligible. The prior id breaks only an exact
+    tie in chronology, so the choice is deterministic.
+    """
     folder = gold_dir(current_root) / REVISIONS_DIR
     if not folder.is_dir():
         return None
-    candidates: list[tuple[str, Path]] = []
+    candidates: list[tuple[datetime, str, Path]] = []
     for path in folder.iterdir():
         proof_file = path / PROOF_FILENAME
         if not path.is_dir() or not proof_file.exists():
             continue
         proof = json.loads(proof_file.read_text("utf-8"))
-        if proof.get("status") == BUILD_PASS and proof.get("current_release_id") == current_id:
-            candidates.append((str(proof["prior_release_id"]), path))
+        if proof.get("status") != BUILD_PASS or proof.get("current_release_id") != current_id:
+            continue
+        chronology = _prior_chronology(proof)
+        if chronology is not None:
+            candidates.append((chronology, str(proof["prior_release_id"]), path))
     if not candidates:
         return None
-    _, path = max(candidates)
+    _, _, path = max(candidates)
     proof = RevisionProof(**json.loads((path / PROOF_FILENAME).read_text("utf-8")))
     events = pd.read_parquet(path / EVENTS_FILENAME)
     for prefix in ("old_", "new_"):
