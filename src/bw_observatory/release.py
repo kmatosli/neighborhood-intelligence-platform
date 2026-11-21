@@ -55,8 +55,10 @@ LEDGER_FILES = (
     BRONZE_CRIME / "incremental_refresh_log.parquet",
     BRONZE_CRIME / "reconciliation_log.parquet",
 )
-# Config read when deriving products; part of the identity because a changed grouping
-# changes the meaning of a derived count.
+# Config read when deriving products. Config ships with the code, so its digest in
+# `release.json` is provenance, not release-data identity: a later config change never
+# invalidates a release. Gold records the config it was built with, and Gold whose config no
+# longer matches the live one is stale (gold.crime_aggregates.check_gold).
 CONFIG_FILES = ("crime_categories.yml", "geographies.yml")
 # The first year of the City crime dataset. The last expected year is never a constant: it is
 # the year of the release's `data_through`, so a 2027 release needs no source edit.

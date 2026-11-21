@@ -109,8 +109,13 @@ with a full one.
    before it becomes public. Automated publication, when built, is copy-on-write: active →
    candidate copy → refresh → reconcile → rebuild Gold → verify → atomic pointer switch. A
    failed candidate never becomes public. Nothing refreshes `current` in place.
-4. A config change (for example a new overlay member) changes `config_sha256` and therefore
-   requires a rebuild. Overlays are not stored (§1.6), so this matters only for `broad_category`.
+4. **Config ships with the code, not with the data.** `release.json` records the config digests
+   it was cut with as provenance only: a later config change never invalidates an archived
+   release or requires rewriting its `release.json`, and release verification does not compare
+   them. Gold records the config it was built with (`config_sha256` in `_build.json`); when the
+   live config no longer matches it, Gold is STALE (`aggregates_stale`) until it is rebuilt.
+   The comparison is of whole-file digests, so any edit to either file stales Gold, even one
+   (such as a new overlay member, §1.6) that changes no stored count.
 
 ### 1.5 `revisions/<prior>__<this>/events.parquet`, incident-level revision events
 
@@ -121,7 +126,7 @@ id placed in Ward 20 in either release. An id appears once however many attribut
 Columns: `id`, `prior_release_id`, `current_release_id`, `exists_prior`, `exists_current`;
 `old_`/`new_` for `date`, `year`, `month`, `primary_type`, `fbi_code`, `arrest`, `domestic`,
 `ward` (spatial), `community_area` (spatial) and `source_status`; boolean reason flags `added`,
-`removed`, `reclassified`, `date_changed`, `geography_changed`, `arrest_changed`,
+`removed`, `restored`, `reclassified`, `date_changed`, `geography_changed`, `arrest_changed`,
 `domestic_changed` (several may be true at once).
 
 Every revision summary is derived from this table. For any analytical cell (geography × year ×
