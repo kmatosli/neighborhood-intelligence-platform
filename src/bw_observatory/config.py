@@ -112,6 +112,11 @@ class Settings(BaseSettings):
         return self.config_dir / "neighborhoods" / "neighborhoods.yml"
 
     @property
+    def service_requests_config(self) -> Path:
+        """311 categories, analytical exclusions and closure semantics."""
+        return self.config_dir / "service_requests.yml"
+
+    @property
     def findings_config(self) -> Path:
         """The Overview's published findings and data gaps (config/findings.yml)."""
         return self.config_dir / "findings.yml"

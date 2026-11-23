@@ -234,6 +234,15 @@ def test_duplicate_ids_are_refused(tmp_path: Path) -> None:
         load_finding_specs(_write_config(tmp_path, [entry, dict(entry)]))
 
 
+def test_the_city_services_findings_are_not_published_without_review() -> None:
+    """C-001 and C-002 were written by this session, not reviewed by the owner. They must stay
+    draft, and therefore unserved, until a reviewer signs off on the wording."""
+    specs = {spec.id: spec for spec in load_finding_specs()}
+    for identifier in ("C-001", "C-002"):
+        assert specs[identifier].status == "draft", f"{identifier} was published without review"
+        assert specs[identifier].reviewed_by is None
+
+
 def test_every_shipped_finding_is_reviewed_and_classified() -> None:
     """The file that ships must not contain an unreviewed published claim."""
     for spec in load_finding_specs():

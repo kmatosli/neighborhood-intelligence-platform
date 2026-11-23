@@ -133,9 +133,12 @@ export function WireShell({
 
       <footer className="border-t bg-paper">
         <div className="mx-auto max-w-5xl px-4 py-6 text-sm text-muted-foreground">
+          {/* Two datasets are now published, so neither may be credited to the other. Each
+              section still names its own source; this line makes the split explicit site-wide. */}
           <p>
-            Counts are reported incidents from the City of Chicago Crimes dataset (ijzp-q8t2).
-            Reports are not convictions, and records may be revised after publication.
+            Crime counts are reported incidents from the City of Chicago Crimes dataset (ijzp-q8t2);
+            reports are not convictions. Service-request counts are from the City of Chicago 311
+            Service Requests dataset (v6vf-nfxy). Records in both may be revised after publication.
           </p>
           <p className="mt-1">
             Every figure is for the current Ward 20 footprint (the 2023 ward map, applied to every

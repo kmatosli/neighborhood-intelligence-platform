@@ -147,20 +147,101 @@ findings:
     reviewed_by: product owner
     reviewed_at: "2026-09-23"
 
+  # G-002 was written when no 311 data existed. Pothole requests are now ingested, so the old
+  # wording had become false and is corrected here to describe the gap that actually remains.
+  # The correction is factual, not editorial: the entry still publishes no figure. The wording
+  # itself has not been re-reviewed since the change — see `reviewed_at`.
+  #
+  # CLASSIFICATION, open question for the owner (2026-09-28). `data_gap` is defined at the top of
+  # this file as "a domain with no ingested data". City Services now has ingested data and one
+  # published category, so the label is no longer exact. This entry is therefore narrowed to
+  # state only what is ABSENT, which is what a gap is, and the recommendation to add a fifth
+  # classification — `partial_coverage`, for a domain with data but incomplete reportability —
+  # is left as an owner decision rather than a vocabulary this session invents.
   - id: G-002
     topic: city_services
     classification: data_gap
     headline:
-      any: "No city-services findings yet."
+      any: "Most city services are not yet reportable."
     observation: >-
-      311 service requests are identified as the next dataset to ingest but are not yet in the
-      platform, so nothing here describes service requests, response times or their differences
-      between neighbourhoods.
+      Of the eight 311 request categories ingested for Ward 20, only potholes have had their
+      closure semantics audited, so only potholes are published. Street lights, traffic signals,
+      sanitation, graffiti, rodents, abandoned vehicles and tree requests are in the data and
+      not yet reportable. Nothing here describes a service the City does not record as a 311
+      request at all, and no request count is a measure of how well a service is delivered.
     missing:
-      - Chicago 311 Service Requests (v6vf-nfxy), 2018 onward
+      - Audited closure semantics for the seven 311 categories other than potholes
+      - A street-mileage or asset denominator, without which pothole counts cannot become rates
+      - Any record of service delivery that does not begin with a resident request
+    destination:
+      route: /trends
+      anchor: city-services
     status: published
-    reviewed_by: product owner
-    reviewed_at: "2026-09-23"
+    # Not attributed to the owner: the owner reviewed the superseded wording, not this one. It
+    # stays published because withdrawing it would hide the gap, and because it states no figure.
+    reviewed_by: factual correction after 311 ingestion; pending owner re-review
+    reviewed_at: "2026-09-27"
+
+  # -- City Services: DRAFT. Not served. Awaiting owner review of wording and classification. --
+  #
+  # Both entries describe reports, never conditions and never performance. Reviewing them means
+  # checking that no sentence below can be read as a claim about how well the City responded.
+  #
+  # Wording revised 2026-09-28 against the source metadata, still unreviewed. Three changes:
+  #   * "Residents submitted" became "were submitted" — the source's `origin` column shows
+  #     requests arriving by phone, internet and from staff, so attributing every report to
+  #     residents is an unsupported claim about who is reporting.
+  #   * "Response time" became "time to recorded closure", because the portal documents neither
+  #     `closed_date` nor `status` and publishes no resolution code.
+  #   * "Why is SO MUCH reporting duplicated" became neutral. "So much" is a judgement the
+  #     figure does not carry, and a research question must not answer itself in its headline.
+  - id: C-001
+    topic: city_services
+    subtopic: potholes
+    classification: change_alert
+    calculation: pothole_request_change
+    headline:
+      up: "More pothole reports were submitted than in the same period last year."
+      down: "Fewer pothole reports were submitted than in the same period last year."
+      flat: "Pothole reports are close to the same period last year."
+    observation: >-
+      {geography} had {count} pothole service requests submitted through {period_end}, against
+      {prior} in the same window ending {prior_period_end} — {change}. This counts reports, not
+      potholes: a change can come from the road surface, from how many people report it, or from
+      a winter that produced more damage. Which of those moved is not visible in this data.
+    limitations:
+      - A request is a report. The data contains no count of how many potholes exist, so a rise cannot be read as more potholes and a fall cannot be read as fewer.
+      - Reporting rates differ between blocks and between years, and nothing here measures that difference.
+      - Counts are not rates. No street-mileage denominator is ingested, so areas with more street miles will tend to produce more requests.
+      - This says nothing about how the City responded, and nothing about whether the response was adequate. Time to recorded closure is reported separately, and a recorded closure does not establish that a pothole was repaired, or when.
+      - Who submits a report is not established here. The source records requests arriving by phone, by internet and from City staff, so this is not a count of residents.
+    destination:
+      route: /trends
+      anchor: city-services
+    status: draft
+
+  - id: C-002
+    topic: city_services
+    subtopic: potholes
+    classification: research_question
+    calculation: pothole_duplicate_share
+    headline:
+      any: "What lies behind the {share} of pothole reports the City links as duplicates?"
+    observation: >-
+      Of {raw} pothole requests in {geography}, the City flagged {duplicates} — {share} — as
+      duplicates of another request, leaving {primary} primary requests. The data does not say
+      why. Several residents reporting the same block, one person re-reporting a condition that
+      has not visibly changed, and a request re-filed after a closure are all consistent with
+      this figure, and it cannot separate them.
+    limitations:
+      - The duplicate flag is the City's own classification, applied by its own process. It is not verified here.
+      - A duplicate is not necessarily a failure. It can mean a shared concern as easily as an unresolved one, and this figure cannot tell the two apart.
+      - Neither count is a number of potholes. One pothole can produce one report, several independent reports, or none, and the City links only the records its own process recognised as related.
+      - Requests are never grouped by how close together they are, so a "duplicate" here always means the City linked the records, not that they merely sit near one another.
+    destination:
+      route: /trends
+      anchor: city-services
+    status: draft
 
   - id: G-003
     topic: economic_conditions
