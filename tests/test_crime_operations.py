@@ -33,6 +33,7 @@ from bw_observatory.ingest.base import STATUS_COMPLETE, STATUS_FAILED
 from bw_observatory.ingest.crime_reconcile import CrimeReconciler
 from bw_observatory.ingest.crime_refresh import CrimeRefresher
 from bw_observatory.ingest.freshness import (
+    RECONCILIATION_LOG_FILENAME,
     STATUS_CURRENT,
     STATUS_NEVER_REFRESHED,
     STATUS_REFRESH_FAILED,
@@ -490,6 +491,124 @@ def test_freshness_is_current_after_a_recent_success(refresher: CrimeRefresher) 
     assert fresh.rows_inserted == 5 and fresh.duration_seconds == 900.0
 
 
+def reconciliation_row(year: int, **overrides: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "run_id": "c",
+        "year": year,
+        "start_time": "2026-09-14T17:00:00+00:00",
+        "end_time": "2026-09-14T17:05:00+00:00",
+        "local_rows": 10,
+        "source_rows": 8,
+        "confirmed_active": 8,
+        "newly_removed": 2,
+        "still_removed": 0,
+        "reappeared": 0,
+        "missing_locally": 0,
+        "duration_seconds": 300.0,
+        "dry_run": False,
+        "status": STATUS_COMPLETE,
+        "error": "",
+    }
+    row.update(overrides)
+    return row
+
+
+def write_reconciliation_log(refresher: CrimeRefresher, rows: list[dict[str, Any]]) -> None:
+    pd.DataFrame(rows).to_parquet(refresher.bronze_dir / RECONCILIATION_LOG_FILENAME, index=False)
+
+
+def test_recognized_source_removals_are_not_unexplained_drift(
+    refresher: CrimeRefresher,
+) -> None:
+    # The refresh saw 10 local rows against 8 in the source; a reconciliation then marked the
+    # 2 extra rows source_removed. They stay on disk (provenance), so the raw difference is
+    # still -2 — but nothing is unexplained.
+    seed_year(refresher, 2026, [crime_record(1, date="2026-09-06T00:00:00.000")])
+    write_log(refresher, [log_row()])
+    write_reconciliation_log(refresher, [reconciliation_row(2026)])
+
+    fresh = crime_freshness(refresher.settings.data_dir, datetime(2026, 9, 15, 12, tzinfo=UTC))
+
+    assert fresh.reconciliation_drift == {"2026": -2}  # unchanged, for compatibility
+    assert fresh.source_local_difference == {"2026": -2}
+    assert fresh.recognized_source_removals == {"2026": 2}
+    assert fresh.unexplained_reconciliation_drift == {"2026": 0}
+    assert fresh.years_never_reconciled == []
+    assert fresh.reconciliation_integrity == "reconciled"
+
+
+def test_still_removed_rows_from_an_earlier_reconciliation_count_as_recognized(
+    refresher: CrimeRefresher,
+) -> None:
+    seed_year(refresher, 2026, [crime_record(1, date="2026-09-06T00:00:00.000")])
+    write_log(refresher, [log_row()])
+    write_reconciliation_log(
+        refresher,
+        [
+            reconciliation_row(2026),
+            reconciliation_row(
+                2026,
+                run_id="d",
+                end_time="2026-09-20T17:05:00+00:00",
+                newly_removed=0,
+                still_removed=2,
+            ),
+        ],
+    )
+    fresh = crime_freshness(refresher.settings.data_dir, datetime(2026, 9, 21, 12, tzinfo=UTC))
+    assert fresh.unexplained_reconciliation_drift == {"2026": 0}
+
+
+def test_a_genuine_missing_local_row_is_unexplained_drift(refresher: CrimeRefresher) -> None:
+    # The source returns one id the local copy lacks: +1 that no removal explains.
+    seed_year(refresher, 2026, [crime_record(1, date="2026-09-06T00:00:00.000")])
+    write_log(
+        refresher,
+        [log_row(reconciliation=json.dumps({"2026": {"local": 8, "source": 9, "drift": 1}}))],
+    )
+    write_reconciliation_log(
+        refresher,
+        [reconciliation_row(2026, local_rows=8, source_rows=9, newly_removed=0, missing_locally=1)],
+    )
+    fresh = crime_freshness(refresher.settings.data_dir, datetime(2026, 9, 15, 12, tzinfo=UTC))
+    assert fresh.unexplained_reconciliation_drift == {"2026": 1}
+    assert fresh.reconciliation_integrity == "unexplained_drift"
+
+
+def test_a_year_never_reconciled_keeps_its_whole_difference_unexplained(
+    refresher: CrimeRefresher,
+) -> None:
+    seed_year(refresher, 2026, [crime_record(1, date="2026-09-06T00:00:00.000")])
+    figures = {
+        "2010": {"local": 5, "source": 5, "drift": 0},
+        "2026": {"local": 10, "source": 8, "drift": -2},
+    }
+    write_log(refresher, [log_row(reconciliation=json.dumps(figures))])
+    write_reconciliation_log(refresher, [reconciliation_row(2026)])
+    fresh = crime_freshness(refresher.settings.data_dir, datetime(2026, 9, 15, 12, tzinfo=UTC))
+    # 2010 agrees on counts but has never been id-reconciled: listed, never assumed sound.
+    assert fresh.years_never_reconciled == ["2010"]
+    assert fresh.unexplained_reconciliation_drift == {"2010": 0, "2026": 0}
+    assert fresh.reconciliation_integrity == "incomplete"
+
+
+def test_a_dry_run_or_failed_reconciliation_recognizes_nothing(
+    refresher: CrimeRefresher,
+) -> None:
+    seed_year(refresher, 2026, [crime_record(1, date="2026-09-06T00:00:00.000")])
+    write_log(refresher, [log_row()])
+    write_reconciliation_log(
+        refresher,
+        [
+            reconciliation_row(2026, dry_run=True),
+            reconciliation_row(2026, run_id="e", status=STATUS_FAILED),
+        ],
+    )
+    fresh = crime_freshness(refresher.settings.data_dir, datetime(2026, 9, 15, 12, tzinfo=UTC))
+    assert fresh.unexplained_reconciliation_drift == {"2026": -2}
+    assert fresh.years_never_reconciled == ["2026"]
+
+
 def test_freshness_is_stale_when_no_refresh_has_succeeded_for_two_days(
     refresher: CrimeRefresher,
 ) -> None:
@@ -573,6 +692,10 @@ def test_freshness_endpoint_is_read_only_and_reports_status(
     payload = response.json()
     assert payload["status"] in {STATUS_CURRENT, STATUS_STALE}
     assert payload["data_through"] == "2026-09-06"
+    assert payload["reconciliation_drift"] == {"2026": -2}
+    assert payload["unexplained_reconciliation_drift"] == {"2026": -2}
+    assert payload["years_never_reconciled"] == ["2026"]
+    assert payload["reconciliation_integrity"] == "unexplained_drift"
     assert TestClient(app).post("/api/v1/freshness").status_code == 405
 
 

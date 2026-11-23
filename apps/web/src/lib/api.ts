@@ -775,3 +775,227 @@ export const MONTH_ABBREVIATIONS = [
   "Nov",
   "Dec",
 ];
+
+// ==========================================================================================
+// Crime Trends — Change (GET /api/v1/trends/{geo}/change)
+// ==========================================================================================
+
+/**
+ * Every figure here comes from the release's Gold aggregates, which are proved equal to the
+ * geography-enriched records when they are built. `analysis_status` other than `ok` means no
+ * figure may be shown — the payload then carries none.
+ */
+export type ChangeWindowKind = "ytd" | "t12m" | "full_year";
+
+export type ChangePeriod = { start: string; end: string; days: number };
+
+export type ChangeWindow = {
+  kind: ChangeWindowKind;
+  label: string;
+  current: ChangePeriod;
+  comparison: ChangePeriod;
+  note: string | null;
+};
+
+export type TypeChange = {
+  primary_type: string;
+  broad_category: string;
+  broad_label: string;
+  enforcement_generated: boolean;
+  current: number;
+  comparison: number;
+  absolute_change: number;
+  percent_change: number | null;
+  percent_withheld_reason: string | null;
+  net_contribution: number | null;
+  gross_movement_share: number | null;
+};
+
+export type ChangeDecomposition = {
+  total: {
+    current: number;
+    comparison: number;
+    absolute_change: number;
+    percent_change: number | null;
+    percent_withheld_reason: string | null;
+  };
+  types: TypeChange[];
+  sum_of_type_changes: number;
+  reconciles: boolean;
+  min_prior_total: number;
+  min_prior_type: number;
+  net_contribution_status: string;
+  net_contribution_note: string;
+  gross_movement_note: string;
+};
+
+export type CompositionShare = {
+  key: string;
+  label: string;
+  count: number;
+  share: number | null;
+  denominator: number;
+};
+
+export type CompositionYear = {
+  year: number;
+  total: number;
+  partition: CompositionShare[];
+  overlays: CompositionShare[];
+  partition_reconciles: boolean;
+};
+
+export type OverlayDefinition = {
+  key: string;
+  label: string;
+  description: string;
+  membership: string;
+  caveats: string[];
+  additive: boolean;
+};
+
+export type AnnualPoint = { year: number; total: number; complete: boolean; through: string };
+
+export type ChangeHistory = {
+  annual: AnnualPoint[];
+  monthly: { year: number; month: number; total: number; complete: boolean }[];
+  trailing_12_months: { year: number; month: number; total: number }[];
+  spans: {
+    label: string;
+    first_year: number;
+    last_year: number;
+    years: number;
+    minimum: number;
+    median: number;
+    maximum: number;
+    first_total: number;
+    last_total: number;
+  }[];
+  same_span: {
+    lookback_years: number;
+    span_label: string;
+    values: AnnualPoint[];
+    minimum: number | null;
+    median: number | null;
+    maximum: number | null;
+    current: number;
+  }[];
+};
+
+export type TrendResult = {
+  span_label: string;
+  first_year: number | null;
+  last_year: number | null;
+  n: number;
+  tau: number | null;
+  p_value: number | null;
+  alpha: number;
+  direction: string;
+  label: string;
+  method: string;
+};
+
+export type WindowSensitivity = {
+  kind: ChangeWindowKind;
+  label: string;
+  current: ChangePeriod | null;
+  comparison: ChangePeriod | null;
+  current_total: number | null;
+  comparison_total: number | null;
+  absolute_change: number | null;
+  percent_change: number | null;
+  direction: "up" | "down" | "flat" | "unavailable";
+  unavailable_reason: string | null;
+};
+
+export type RevisionSide = {
+  period: ChangePeriod;
+  prior_release_total: number;
+  current_release_total: number;
+  entries: number;
+  exits: number;
+};
+
+export type ChangeResponse = {
+  analysis_status: "ok" | "aggregates_stale" | "aggregates_unavailable" | "window_unavailable";
+  unavailable_reason: string | null;
+  identity: {
+    geography_id: string;
+    geography_label: string;
+    geography_frame: string;
+    source: string;
+    release_id: string;
+    release_status: string;
+    data_through: string;
+    provisional: boolean;
+    provisional_rule: string;
+    freshness_status: string;
+  } | null;
+  window: ChangeWindow | null;
+  decomposition: ChangeDecomposition | null;
+  composition: {
+    first_year: number;
+    last_complete_year: number;
+    years: CompositionYear[];
+    overlay_definitions: OverlayDefinition[];
+    note: string;
+  } | null;
+  history: ChangeHistory | null;
+  trend: TrendResult[];
+  sensitivity: {
+    windows: WindowSensitivity[];
+    directions_agree: boolean | null;
+    note: string;
+  } | null;
+  revisions: {
+    prior_release_id: string;
+    current_release_id: string;
+    current_period: RevisionSide;
+    comparison_period: RevisionSide;
+    incidents_revised: number;
+    reasons: Record<string, number>;
+    note: string;
+  } | null;
+  revisions_note: string | null;
+  limitations: string[];
+  method_flags: string[];
+  anchors: Record<string, string>;
+};
+
+export async function fetchChange(
+  geographyId: string,
+  year: number,
+  window: ChangeWindowKind,
+  signal?: AbortSignal,
+): Promise<ChangeResponse> {
+  const response = await fetch(
+    `/api/v1/trends/${geographyId}/change?year=${year}&window=${window}`,
+    { signal, headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) {
+    let detail = `The data service returned an error (${response.status}).`;
+    try {
+      const body = (await response.json()) as { detail?: string };
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Not JSON. Keep the status-based message.
+    }
+    throw new ApiError(detail, response.status);
+  }
+  const data = (await response.json()) as ChangeResponse;
+  if (typeof data.analysis_status !== "string") {
+    throw new ApiError("The server returned Change data in an unexpected shape.", 500);
+  }
+  return data;
+}
+
+/** "1 Jan 2026 – 6 Sep 2026" from two ISO dates. */
+export function periodRange(period: ChangePeriod): string {
+  return `${residentDate(period.start)} – ${residentDate(period.end)}`;
+}
+
+/** "12.3%" for a 0–1 share, "—" when there is no denominator. */
+export function formatShare(share: number | null): string {
+  if (share === null) return "—";
+  return `${(share * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+}

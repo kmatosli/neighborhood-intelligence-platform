@@ -22,6 +22,7 @@ dependencies = [
   "pyyaml>=6.0.0",
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
+  "scipy>=1.18.1",
 ]
 
 [dependency-groups]
@@ -51,10 +52,10 @@ python_version = "3.12"
 strict = true
 packages = ["bw_observatory"]
 
-# geopandas, shapely, pyogrio, and pyarrow ship no type stubs. Untyped imports are allowed
-# for these four only; everything in this project stays strictly typed.
+# geopandas, shapely, pyogrio, pyarrow and scipy ship no type stubs. Untyped imports are
+# allowed for these five only; everything in this project stays strictly typed.
 [[tool.mypy.overrides]]
-module = ["geopandas.*", "shapely.*", "pyogrio.*", "pyarrow.*"]
+module = ["geopandas.*", "shapely.*", "pyogrio.*", "pyarrow.*", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

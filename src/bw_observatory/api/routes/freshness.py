@@ -37,8 +37,13 @@ class CrimeFreshness(BaseModel):
     rows_unchanged: int | None
     rows_missing_geography: int | None
     duration_seconds: float | None
-    reconciliation_drift: dict[str, int]
+    reconciliation_drift: dict[str, int]  # raw source − local; kept for compatibility
     last_reconciliation: dict[str, Any] | None
+    source_local_difference: dict[str, int]
+    recognized_source_removals: dict[str, int]
+    unexplained_reconciliation_drift: dict[str, int]  # the integrity signal
+    years_never_reconciled: list[str]
+    reconciliation_integrity: str  # reconciled | incomplete | unexplained_drift | unknown
 
 
 @router.get("/freshness", response_model=CrimeFreshness)

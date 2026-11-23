@@ -423,3 +423,237 @@ class PulseResponse(BaseModel):
     #: Properties of the dataset that could explain part of the pattern (see MeasurementNotes).
     measurement: MeasurementNotes | None = None
     neighborhoods: list[NeighborhoodAvailability]
+
+
+# -- Crime Trends: Change (Crime Analytics Sprint 1) ---------------------------------------
+#
+# Every analytical value travels with its counts and its denominator. A percentage is `None`
+# when its base is below the published `min_prior` rule — never zero, never a guess — and the
+# reason is carried beside it. Nothing here is generated prose about causes.
+
+
+class ChangePeriod(BaseModel):
+    """One side of a comparison: inclusive calendar dates."""
+
+    start: str
+    end: str
+    days: int = Field(ge=1)
+
+
+class ChangeWindow(BaseModel):
+    kind: str  # ytd | t12m | full_year
+    label: str
+    current: ChangePeriod
+    comparison: ChangePeriod
+    note: str | None = None
+
+
+class TypeChange(BaseModel):
+    """One primary crime type, current against comparison. Every type is listed (no top-N)."""
+
+    primary_type: str
+    broad_category: str
+    broad_label: str
+    enforcement_generated: bool
+    current: int = Field(ge=0)
+    comparison: int = Field(ge=0)
+    absolute_change: int
+    percent_change: float | None = None
+    percent_withheld_reason: str | None = None
+    # Δ_i / overall Δ. Signed, can exceed 100%; always `interpretation_limited` (see
+    # ChangeDecomposition.net_contribution_note) and null when the overall change is zero.
+    net_contribution: float | None = None
+    # |Δ_i| / Σ|Δ|: share of gross category movement. Never "contribution to net change".
+    gross_movement_share: float | None = None
+
+
+class ChangeTotal(BaseModel):
+    current: int = Field(ge=0)
+    comparison: int = Field(ge=0)
+    absolute_change: int
+    percent_change: float | None = None
+    percent_withheld_reason: str | None = None
+
+
+class ChangeDecomposition(BaseModel):
+    total: ChangeTotal
+    types: list[TypeChange]
+    sum_of_type_changes: int
+    reconciles: bool  # Σ type Δ == overall Δ, exactly
+    min_prior_total: int
+    min_prior_type: int
+    net_contribution_status: str  # interpretation_limited | unavailable
+    net_contribution_note: str
+    gross_movement_note: str
+
+
+class CompositionShare(BaseModel):
+    key: str
+    label: str
+    count: int = Field(ge=0)
+    share: float | None = None  # count / denominator, 0–1
+    denominator: int = Field(ge=0)
+
+
+class CompositionYear(BaseModel):
+    year: int
+    total: int = Field(ge=0)
+    partition: list[CompositionShare]  # broad categories; sums to total
+    overlays: list[CompositionShare]  # NOT additive; never stacked to 100%
+    partition_reconciles: bool
+
+
+class OverlayDefinition(BaseModel):
+    key: str
+    label: str
+    description: str
+    membership: str  # human-readable rule (primary types / FBI codes)
+    caveats: list[str] = []
+    additive: bool = False
+
+
+class ChangeComposition(BaseModel):
+    first_year: int
+    last_complete_year: int
+    years: list[CompositionYear]
+    overlay_definitions: list[OverlayDefinition]
+    note: str
+
+
+class AnnualPoint(BaseModel):
+    year: int
+    total: int = Field(ge=0)
+    complete: bool
+    through: str  # last covered day of the year
+
+
+class MonthPoint(BaseModel):
+    year: int
+    month: int = Field(ge=1, le=12)
+    total: int = Field(ge=0)
+    complete: bool
+
+
+class TrailingPoint(BaseModel):
+    """Sum of the 12 complete months ending with this month."""
+
+    year: int
+    month: int = Field(ge=1, le=12)
+    total: int = Field(ge=0)
+
+
+class SpanContext(BaseModel):
+    label: str  # "3 years", "5 years", "10 years", "Full history"
+    first_year: int
+    last_year: int
+    years: int
+    minimum: int
+    median: float
+    maximum: int
+    first_total: int
+    last_total: int
+
+
+class SameSpanHistory(BaseModel):
+    """The current window's calendar span in earlier years.
+
+    Descriptive (minimum, median, maximum against the current value); not seasonal adjustment.
+    """
+
+    lookback_years: int
+    span_label: str  # e.g. "1 Jan – 6 Sep"
+    values: list[AnnualPoint]
+    minimum: int | None = None
+    median: float | None = None
+    maximum: int | None = None
+    current: int
+
+
+class ChangeHistory(BaseModel):
+    annual: list[AnnualPoint]
+    monthly: list[MonthPoint]
+    trailing_12_months: list[TrailingPoint]
+    spans: list[SpanContext]
+    same_span: list[SameSpanHistory]
+
+
+class TrendResult(BaseModel):
+    span_label: str
+    first_year: int | None = None
+    last_year: int | None = None
+    n: int
+    tau: float | None = None
+    p_value: float | None = None
+    alpha: float
+    direction: str  # rising | falling | no_consistent_direction | no_variation | unavailable
+    label: str
+    method: str
+
+
+class WindowSensitivity(BaseModel):
+    kind: str
+    label: str
+    current: ChangePeriod | None = None
+    comparison: ChangePeriod | None = None
+    current_total: int | None = None
+    comparison_total: int | None = None
+    absolute_change: int | None = None
+    percent_change: float | None = None
+    direction: str  # up | down | flat | unavailable
+    unavailable_reason: str | None = None
+
+
+class ComparisonSensitivity(BaseModel):
+    windows: list[WindowSensitivity]
+    directions_agree: bool | None = None
+    note: str
+
+
+class RevisionSide(BaseModel):
+    period: ChangePeriod
+    prior_release_total: int
+    current_release_total: int
+    entries: int
+    exits: int
+
+
+class RevisionSummary(BaseModel):
+    prior_release_id: str
+    current_release_id: str
+    current_period: RevisionSide
+    comparison_period: RevisionSide
+    incidents_revised: int  # distinct incidents whose change touches either period
+    reasons: dict[str, int]  # NOT additive: one incident can carry several reasons
+    note: str
+
+
+class ChangeIdentity(BaseModel):
+    geography_id: str
+    geography_label: str
+    geography_frame: str  # the scope sentence: what exactly the figures cover
+    source: str
+    release_id: str
+    release_status: str
+    data_through: str
+    provisional: bool
+    provisional_rule: str
+    freshness_status: str
+
+
+class ChangeResponse(BaseModel):
+    """GET /api/v1/trends/{geography_id}/change."""
+
+    analysis_status: str  # ok | aggregates_stale | aggregates_unavailable | window_unavailable
+    unavailable_reason: str | None = None
+    identity: ChangeIdentity | None = None
+    window: ChangeWindow | None = None
+    decomposition: ChangeDecomposition | None = None
+    composition: ChangeComposition | None = None
+    history: ChangeHistory | None = None
+    trend: list[TrendResult] = []
+    sensitivity: ComparisonSensitivity | None = None
+    revisions: RevisionSummary | None = None
+    revisions_note: str | None = None
+    limitations: list[str] = []
+    method_flags: list[str] = []
+    anchors: dict[str, str] = {}

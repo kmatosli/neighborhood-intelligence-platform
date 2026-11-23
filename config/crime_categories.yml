@@ -174,3 +174,59 @@ enforcement_generated_primary_types:
   - CONCEALED CARRY LICENSE VIOLATION
   - PUBLIC INDECENCY
   - OBSCENITY
+
+# ----------------------------------------------------------------------------------------
+# Overlays — labelled analytical subsets, NOT part of the broad_categories partition.
+#
+# A record can belong to several overlays (a NARCOTICS report is in `narcotics` and in
+# `enforcement_generated`), so overlay counts are never stacked, never summed to a total and
+# never drawn as shares of 100%. Each is published with its count, its share of the total
+# and that denominator, side by side with the partition. Owner decision 2026-10-27.
+#
+# Membership is by `primary_types` (the source's primary_type) or `fbi_codes` (the source's
+# `fbi_code`, its NIBRS classification), never by description text.
+# ----------------------------------------------------------------------------------------
+
+overlays:
+  enforcement_generated:
+    label: Enforcement-generated offences
+    description: >-
+      Offences recorded almost only when police act (the list above). A change in this count
+      can reflect a change in enforcement activity rather than in the behaviour.
+    primary_types_from: enforcement_generated_primary_types
+
+  narcotics:
+    label: Narcotics
+    description: Reported narcotics offences. Also enforcement-generated.
+    primary_types:
+      - NARCOTICS
+      - OTHER NARCOTIC VIOLATION
+
+  motor_vehicle_theft:
+    label: Motor vehicle theft
+    description: Reported motor vehicle thefts. Also counted in Property crime.
+    primary_types:
+      - MOTOR VEHICLE THEFT
+
+  # Approved 2026-10-27 (CA-09). An unweighted subset — NOT a severity score, a harm score or
+  # a neighbourhood safety ranking. 01B (involuntary manslaughter / reckless homicide) and
+  # every 08A/08B record are excluded, including IUCR 0440, 0454, 0554, 0545 and 0484 whose
+  # descriptions say "aggravated" but which the source codes as simple assault or battery.
+  # Attempts stay where the source codes them inside these classes. Sensitive victim classes
+  # (domestic, child, unborn child, senior) count toward the total and are NEVER broken out.
+  selected_fbi_violent:
+    label: Selected FBI/NIBRS violent-offense classes
+    status: approved
+    description: >-
+      Reports the source classifies as murder and non-negligent manslaughter (01A), criminal
+      sexual assault (02), robbery (03), aggravated assault (04A) or aggravated battery (04B).
+      An unweighted subset, not a measure of severity or safety.
+    fbi_codes: ["01A", "02", "03", "04A", "04B"]
+    caveats:
+      - >-
+        Includes aggravated assaults and batteries against police officers and protected
+        employees where the source codes them 04A/04B; part of that count reflects police
+        contact itself.
+      - >-
+        Shown only as a total. Its parts are never broken out, so no figure about a sensitive
+        victim class is published.

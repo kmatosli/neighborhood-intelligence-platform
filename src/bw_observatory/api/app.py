@@ -22,6 +22,7 @@ from bw_observatory.api.routes import (
     incidents,
     overview,
     pulse,
+    trends,
     years,
 )
 from bw_observatory.config import Settings
@@ -62,6 +63,7 @@ app.include_router(incidents.router)
 app.include_router(city_services.router)
 app.include_router(findings.router)
 app.include_router(freshness.router)
+app.include_router(trends.router)
 
 
 @app.get("/api/v1/health")
